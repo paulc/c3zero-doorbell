@@ -10,7 +10,7 @@ const ADC_BUFFER_LEN: usize = 100;
 const THRESHOLD_BUFFER: usize = 5;
 const SAMPLE_PERIOD_US: u64 = 1000;
 
-fn stddev(buf: &[f64; ADC_BUFFER_LEN]) -> f64 {
+fn stats(buf: &[f64; ADC_BUFFER_LEN]) -> (f64, f64) {
     let mean = buf.iter().sum::<f64>() / ADC_BUFFER_LEN as f64;
     let var = buf
         .iter()
@@ -20,7 +20,7 @@ fn stddev(buf: &[f64; ADC_BUFFER_LEN]) -> f64 {
         })
         .sum::<f64>();
     let var = var / ADC_BUFFER_LEN as f64;
-    var.sqrt()
+    (mean, var.sqrt())
 }
 
 fn main() -> anyhow::Result<()> {
@@ -44,16 +44,18 @@ fn main() -> anyhow::Result<()> {
     let mut prev = [1.0_f64; THRESHOLD_BUFFER];
 
     loop {
+        // Ignore annoying clippy warning
+        #[allow(clippy::needless_range_loop)]
         for i in 0..buf.len() {
-            buf[i] = adc.read(&mut adc_pin)? as f64 / 4096 as f64;
+            buf[i] = adc.read(&mut adc_pin)? as f64 / 4096_f64;
             thread::sleep(Duration::from_micros(SAMPLE_PERIOD_US));
         }
 
-        let stddev = stddev(&buf);
+        let (mean, stddev) = stats(&buf);
         let threshold = prev.iter().sum::<f64>() / prev.len() as f64;
 
-        // Trigger if stddev > 4 * threshold
-        let ring = stddev > threshold * 4_f64;
+        // Trigger if stddev > 2.5 * threshold
+        let ring = stddev > threshold * 2.5_f64;
 
         if !ring {
             for i in 0..(THRESHOLD_BUFFER - 1) {
@@ -62,8 +64,7 @@ fn main() -> anyhow::Result<()> {
             prev[THRESHOLD_BUFFER - 1] = stddev;
         }
         println!(
-            "[{}] Threshold: {:.4} / Std Dev: {:.4} / Ring: {}",
-            count, threshold, stddev, ring
+            "[{count}] Mean: {mean:.4} :: Std Dev: {stddev:.4}/{threshold:.4} :: Ring: {ring}"
         );
         count += 1;
         thread::sleep(Duration::from_millis(10));
