@@ -1,21 +1,15 @@
-use esp_idf_hal::adc::attenuation::DB_11;
-use esp_idf_hal::adc::oneshot::config::AdcChannelConfig;
-use esp_idf_hal::adc::oneshot::{AdcChannelDriver, AdcDriver};
-use esp_idf_hal::gpio::OutputPin;
-use esp_idf_hal::peripherals::Peripherals;
+use std::num::NonZeroU32;
+
+use esp_idf_hal::peripherals::*;
+use esp_idf_hal::sys::EspError;
 use esp_idf_hal::task::notification::Notification;
 use esp_idf_hal::timer::*;
 
-use std::num::NonZeroU32;
+use esp_idf_hal::adc::attenuation::DB_11;
+use esp_idf_hal::adc::oneshot::config::AdcChannelConfig;
+use esp_idf_hal::adc::oneshot::{AdcChannelDriver, AdcDriver};
 
-use doorbell::rgb::{self, RgbLayout};
-use doorbell::ws2812_rmt::Ws2812RmtSingle;
-
-const ADC_SAMPLE_RATE: u64 = 1000; // 1kHz sample rate
-const ADC_BUFFER_LEN: usize = 100; // 100ms sample buffer
-const ADC_MIN_THRESHOLD: f64 = 0.1; // If Hall-Effect sensor is on we should see Vcc/2
-                                    // when bell is off - if this is below threshold
-                                    // we assume that sensor is powered off
+const ADC_BUFFER_LEN: usize = 100;
 const THRESHOLD_BUFFER: usize = 5;
 
 fn stats(buf: &[f64; ADC_BUFFER_LEN]) -> (f64, f64) {
@@ -31,31 +25,32 @@ fn stats(buf: &[f64; ADC_BUFFER_LEN]) -> (f64, f64) {
     (mean, var.sqrt())
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<(), EspError> {
+    // It is necessary to call this function once. Otherwise some patches to the runtime
+    // implemented by esp-idf-sys might not link properly. See https://github.com/esp-rs/esp-idf-template/issues/71
     esp_idf_hal::sys::link_patches();
 
     // Bind the log crate to the ESP Logging facilities
     esp_idf_svc::log::EspLogger::initialize_default();
+    log::info!("Starting...");
 
     let peripherals = Peripherals::take()?;
 
-    // Status LED (C3-Zero onboard RGB LED pin = GPIO10)
-    // let led = peripherals.pins.gpio10.downgrade_output();
-    // let channel = peripherals.rmt.channel0;
-    // let mut status = Ws2812RmtSingle::new(led, channel, RgbLayout::Rgb)?;
+    // A safer abstraction over FreeRTOS/ESP-IDF task notifications.
+    let notification = Notification::new();
 
-    // Setup Timer
+    // BaseClock for the Timer is the APB_CLK that is running on 80MHz at default
+    // The default clock-divider is -> 80
+    // default APB clk is available with the APB_CLK_FREQ constant
     let timer_conf = config::Config::new().auto_reload(true);
     let mut timer = TimerDriver::new(peripherals.timer00, &timer_conf)?;
 
-    // Setup ADC Timer
-    timer.set_alarm(timer.tick_hz() / ADC_SAMPLE_RATE)?;
+    // 1kHz Timer
+    timer.set_alarm(timer.tick_hz() / 1000)?;
 
-    // Notification handler
-    let notification = Notification::new();
     let notifier = notification.notifier();
 
-    // Safety: make sure the `Notification` object is not dropped while the subscription is active
+    // Saftey: make sure the `Notification` object is not dropped while the subscription is active
     unsafe {
         timer.subscribe(move || {
             let bitset = 0b10001010101;
@@ -63,22 +58,25 @@ fn main() -> anyhow::Result<()> {
         })?;
     }
 
-    // Setup ADC
-    let adc = AdcDriver::new(peripherals.adc1)?;
-    let config = AdcChannelConfig {
-        attenuation: DB_11,
-        ..Default::default()
-    };
-    let mut adc_pin = AdcChannelDriver::new(&adc, peripherals.pins.gpio2, &config)?;
-
-    // Enable timer
     timer.enable_interrupt()?;
     timer.enable_alarm(true)?;
     timer.enable(true)?;
 
-    let mut count = 0_u32;
+    println!("APB_CLK_FREQ: {:?}", esp_idf_hal::sys::APB_CLK_FREQ);
+    println!("Timer: {:?}", timer.tick_hz());
+
+    // Configure ADC
+    let adc = AdcDriver::new(peripherals.adc1)?;
+
+    let config = AdcChannelConfig {
+        attenuation: DB_11,
+        ..Default::default()
+    };
+
+    let mut adc_pin = AdcChannelDriver::new(&adc, peripherals.pins.gpio2, &config)?;
     let mut buf = [0_f64; ADC_BUFFER_LEN];
     let mut prev = [1.0_f64; THRESHOLD_BUFFER];
+    let mut count = 0_usize;
 
     loop {
         // Ignore annoying clippy warning
@@ -90,27 +88,17 @@ fn main() -> anyhow::Result<()> {
                 buf[i] = adc.read(&mut adc_pin)? as f64 / 4096_f64;
             }
         }
-
         let (mean, stddev) = stats(&buf);
         let threshold = prev.iter().sum::<f64>() / prev.len() as f64;
 
         // Trigger if stddev > 2.5 * threshold
         let ring = stddev > threshold * 2.5_f64;
 
-        if mean < ADC_MIN_THRESHOLD {
-            // Hall-effect sensor probably off - ignore readings
-            // status.set(rgb::WHITE)?;
-        } else {
-            if ring {
-                // status.set(rgb::RED)?;
-            } else {
-                // status.set(rgb::BLUE)?;
-                // Update threshold buffer
-                for i in 0..(THRESHOLD_BUFFER - 1) {
-                    prev[i] = prev[i + 1];
-                }
-                prev[THRESHOLD_BUFFER - 1] = stddev;
+        if !ring {
+            for i in 0..(THRESHOLD_BUFFER - 1) {
+                prev[i] = prev[i + 1];
             }
+            prev[THRESHOLD_BUFFER - 1] = stddev;
         }
         println!(
             "[{count}] Mean: {mean:.4} :: Std Dev: {stddev:.4}/{threshold:.4} :: Ring: {ring}"
