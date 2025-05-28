@@ -7,11 +7,17 @@ use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::task::notification::Notification;
 use esp_idf_hal::timer::config::Config as TimerConfig;
 use esp_idf_hal::timer::TimerDriver;
+use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::hal::adc::{AdcContConfig, AdcContDriver, AdcMeasurement, Attenuated};
+use esp_idf_svc::nvs::EspDefaultNvsPartition;
+use esp_idf_svc::wifi::EspWifi;
 
 use std::num::NonZeroU32;
 
+use doorbell::httpd;
+use doorbell::nvs::APStore;
 use doorbell::rgb::{self, RgbLayout};
+use doorbell::wifi::{self, APConfig};
 use doorbell::ws2812_rmt::Ws2812RmtSingle;
 
 const ADC_SAMPLE_RATE: u32 = 1000; // 1kHz sample rate
@@ -39,8 +45,68 @@ fn main() -> anyhow::Result<()> {
 
     // Bind the log crate to the ESP Logging facilities
     esp_idf_svc::log::EspLogger::initialize_default();
+    log::info!("Started...");
 
+    // Initialise peripherals
     let peripherals = Peripherals::take()?;
+    let sys_loop = EspSystemEventLoop::take()?;
+    let nvs_default_partition = EspDefaultNvsPartition::take()?;
+
+    // Initialise WiFi
+    let mut wifi: EspWifi<'_> = EspWifi::new(
+        peripherals.modem,
+        sys_loop.clone(),
+        Some(nvs_default_partition.clone()),
+    )?;
+    wifi::wifi_init(&mut wifi)?;
+
+    // Initial scan
+    wifi::wifi_scan(&mut wifi)?;
+
+    // Initislise NVS APStore
+    APStore::init(nvs_default_partition.clone())?;
+
+    let mut wifi_config: Option<APConfig> = None;
+
+    for config in wifi::find_known_aps() {
+        log::info!("Trying network: {}", config.ssid);
+        match wifi::connect_wifi(&mut wifi, &config, 10000) {
+            Ok(true) => {
+                log::info!("Connected to Wifi: {}", config.ssid);
+                wifi_config = Some(config);
+                break;
+            }
+            Ok(false) => {
+                log::info!("Failed to connect to Wifi: {}", config.ssid);
+            }
+            Err(e) => {
+                log::info!("Wifi Error: {} [{}]", config.ssid, e);
+            }
+        }
+    }
+
+    log::info!("WiFi Config: {:?}", wifi_config);
+
+    let mut server = if let Some(config) = wifi_config {
+        log::info!("Connected to SSID: {}", config.ssid);
+        log::info!("IP: {}", wifi.sta_netif().get_ip_info()?.ip);
+        httpd::start_http_server()?
+    } else {
+        log::info!("No valid config found - starting AP");
+        wifi::start_access_point(&mut wifi)?;
+        httpd::start_http_server()?;
+        loop {
+            log::info!("AP");
+            esp_idf_hal::delay::FreeRtos::delay_ms(2000);
+        }
+    };
+
+    loop {
+        log::info!("STA");
+        esp_idf_hal::delay::FreeRtos::delay_ms(2000);
+    }
+
+    /*
 
     // Status LED (C3-Zero onboard RGB LED pin = GPIO10)
     let ws2812 = peripherals.pins.gpio10.downgrade_output();
@@ -59,15 +125,15 @@ fn main() -> anyhow::Result<()> {
         &mut led,
     )?;
 
-    Ok(())
+    */
 }
 
-fn adc_cont(
+fn _adc_cont(
     timer: esp_idf_hal::timer::TIMER00,
     adc: esp_idf_hal::adc::ADC1,
     adc_pin: esp_idf_hal::gpio::Gpio2,
     status: &mut Ws2812RmtSingle<'_>,
-    led: &mut PinDriver<'_, _, _>,
+    led: &mut PinDriver<'_, esp_idf_hal::gpio::Gpio5, esp_idf_hal::gpio::Output>,
 ) -> anyhow::Result<()> {
     let mut config = AdcContConfig::default();
     config.sample_freq = esp_idf_hal::units::Hertz(ADC_SAMPLE_RATE);
@@ -103,8 +169,14 @@ fn adc_cont(
                 }
                 let ring = check_ring(count, now - prev_t, &samples_f64, &mut prev);
                 match ring {
-                    true => status.set(rgb::RED)?,
-                    false => status.set(rgb::GREEN)?,
+                    true => {
+                        led.set_low()?;
+                        status.set(rgb::RED)?
+                    }
+                    false => {
+                        led.set_high()?;
+                        status.set(rgb::GREEN)?
+                    }
                 };
                 count += 1;
                 prev_t = now;
