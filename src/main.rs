@@ -49,17 +49,14 @@ fn main() -> anyhow::Result<()> {
     status.set(rgb::BLUE)?;
 
     let mut led = PinDriver::output(peripherals.pins.gpio5)?;
-    led.set_low()?;
-    esp_idf_hal::delay::FreeRtos::delay_ms(1000);
     led.set_high()?;
-    esp_idf_hal::delay::FreeRtos::delay_ms(1000);
-    led.set_low()?;
 
     adc_cont(
         peripherals.timer00,
         peripherals.adc1,
         peripherals.pins.gpio2,
         &mut status,
+        &mut led,
     )?;
 
     Ok(())
@@ -70,6 +67,7 @@ fn adc_cont(
     adc: esp_idf_hal::adc::ADC1,
     adc_pin: esp_idf_hal::gpio::Gpio2,
     status: &mut Ws2812RmtSingle<'_>,
+    led: &mut PinDriver<'_, _, _>,
 ) -> anyhow::Result<()> {
     let mut config = AdcContConfig::default();
     config.sample_freq = esp_idf_hal::units::Hertz(ADC_SAMPLE_RATE);
