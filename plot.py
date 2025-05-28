@@ -1,5 +1,8 @@
+import sys
 import matplotlib.pyplot as plt
 import numpy as np
+
+import re
 
 def plot(data,vertical_offset=0.1):
     # Create a figure and axis
@@ -53,6 +56,12 @@ def plot2(data,vertical_offset=0.1):
 if __name__ == '__main__':
     import csv,fileinput
     r = csv.reader(fileinput.input())
-    rows  = [ [ float(v) for v in row ] for row in r]
-    plot(rows)
+    rows = []
+    for row in r:
+        try:
+            rows.append([ float(v) for v in row ])
+        except:
+            msg = ''.join([ c for c in ','.join(row) if c.isprintable()])
+            print(f"CSV ERROR: {msg}\r", file=sys.stderr)
+    plot2(rows)
    

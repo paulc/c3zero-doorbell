@@ -9,7 +9,7 @@ use esp_idf_hal::adc::attenuation::DB_11;
 use esp_idf_hal::adc::oneshot::config::AdcChannelConfig;
 use esp_idf_hal::adc::oneshot::{AdcChannelDriver, AdcDriver};
 
-const ADC_BUFFER_LEN: usize = 200;
+const SAMPLES: usize = 200;
 const SAMPLE_RATE: u64 = 1000;
 
 fn main() -> Result<(), EspError> {
@@ -57,11 +57,11 @@ fn main() -> Result<(), EspError> {
     };
 
     let mut adc_pin = AdcChannelDriver::new(&adc, peripherals.pins.gpio2, &config)?;
-    let mut buf = [0_f64; ADC_BUFFER_LEN];
+    let mut buf = [0_f64; SAMPLES];
 
     println!(
-        "=== ADC Samples - Sample Rate: {} / Buf Size: {}",
-        SAMPLE_RATE, ADC_BUFFER_LEN
+        "=== ADC Samples - Sample Rate: {} / Samples: {}",
+        SAMPLE_RATE, SAMPLES
     );
 
     loop {
