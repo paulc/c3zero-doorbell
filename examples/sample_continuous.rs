@@ -14,7 +14,7 @@ enum Mode {
 const SAMPLES: usize = 100;
 // Min sample rate for continuous driver is 1kHz
 const SAMPLE_RATE: u32 = 1000;
-const MODE: Mode = Mode::Samples;
+const MODE: Mode = Mode::Stats;
 
 fn stats(buf: &[f64; SAMPLES]) -> (f64, f64) {
     let mean = buf.iter().sum::<f64>() / SAMPLES as f64;
@@ -42,9 +42,9 @@ fn main() -> Result<(), EspError> {
     let mut config = AdcContConfig::default();
     config.sample_freq = esp_idf_hal::units::Hertz(SAMPLE_RATE);
     config.frame_measurements = SAMPLES;
-    config.frames_count = 1;
+    config.frames_count = 2; // Need 2 buffers as frames can be unaligned (?)
 
-    let adc_pin = Attenuated::db11(peripherals.pins.gpio2);
+    let adc_pin = Attenuated::db11(peripherals.pins.gpio4);
     let mut adc = AdcContDriver::new(peripherals.adc1, &config, adc_pin)?;
 
     let mut samples = [AdcMeasurement::default(); SAMPLES];
@@ -63,33 +63,58 @@ fn main() -> Result<(), EspError> {
     );
 
     let mut count = 0_usize;
+    let mut frame = 0_usize;
+
+    // Discard the first read after reset as this can cause alignment problems
+    let _ = adc.read(&mut samples, TickType::new_millis(2000).ticks());
 
     loop {
         match adc.read(&mut samples, TickType::new_millis(2000).ticks()) {
             Ok(n) => {
                 let now = timer.counter()?;
-                for (i, s) in samples.iter().enumerate() {
-                    samples_f64[i] = s.data() as f64 / 4096_f64;
+
+                // We dont always get a full frame from the ADC so fill up
+                // samples_f64 with the data we do have
+
+                // Make sure we dont overrun samples_f64 array
+                let n = if frame + n > SAMPLES {
+                    SAMPLES - frame
+                } else {
+                    n
+                };
+
+                // Append frame to output
+                for i in 0..n {
+                    samples_f64[frame + i] = samples[i].data() as f64 / 4096_f64;
                 }
-                match MODE {
-                    Mode::Stats => {
-                        let ticks = prev - now;
-                        let (mean, sd) = stats(&samples_f64);
-                        println!("{count} [{n}/{ticks}] : Mean = {mean:.3} / Std Dev = {sd:.3}",);
+                frame += n;
+
+                // When it's full process
+                if frame == SAMPLES {
+                    for (i, s) in samples.iter().enumerate() {
+                        samples_f64[i] = s.data() as f64 / 4096_f64;
                     }
-                    Mode::Samples => {
-                        println!(
-                            "{}",
-                            samples_f64
-                                .iter()
-                                .map(|v| format!("{:.3}", v))
-                                .collect::<Vec<_>>()
-                                .join(","),
-                        );
+                    match MODE {
+                        Mode::Stats => {
+                            let ticks = now - prev;
+                            let (mean, sd) = stats(&samples_f64);
+                            println!("{count} [{ticks}] : Mean = {mean:.3} / Std Dev = {sd:.3}",);
+                        }
+                        Mode::Samples => {
+                            println!(
+                                "{}",
+                                samples_f64
+                                    .iter()
+                                    .map(|v| format!("{:.3}", v))
+                                    .collect::<Vec<_>>()
+                                    .join(","),
+                            );
+                        }
                     }
+                    prev = now;
+                    count += 1;
+                    frame = 0;
                 }
-                count += 1;
-                prev = now;
             }
             Err(e) => println!("{:?}", e),
         }

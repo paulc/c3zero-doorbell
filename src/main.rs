@@ -1,18 +1,14 @@
-use esp_idf_hal::adc::attenuation::DB_11;
-use esp_idf_hal::adc::oneshot::config::AdcChannelConfig;
-use esp_idf_hal::adc::oneshot::{AdcChannelDriver, AdcDriver};
 use esp_idf_hal::delay::TickType;
 use esp_idf_hal::gpio::{OutputPin, PinDriver};
 use esp_idf_hal::peripherals::Peripherals;
-use esp_idf_hal::task::notification::Notification;
-use esp_idf_hal::timer::config::Config as TimerConfig;
 use esp_idf_hal::timer::TimerDriver;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::hal::adc::{AdcContConfig, AdcContDriver, AdcMeasurement, Attenuated};
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::EspWifi;
 
-use std::num::NonZeroU32;
+use embedded_svc::http::client::Client as HttpClient;
+use esp_idf_svc::http::client::{Configuration as HttpConfiguration, EspHttpConnection};
 
 use doorbell::httpd;
 use doorbell::nvs::APStore;
@@ -21,7 +17,7 @@ use doorbell::wifi::{self, APConfig};
 use doorbell::ws2812_rmt::Ws2812RmtSingle;
 
 const ADC_SAMPLE_RATE: u32 = 1000; // 1kHz sample rate
-const ADC_BUFFER_LEN: usize = 100; // 100ms sample buffer
+const ADC_BUFFER_LEN: usize = 50; // 50ms sample buffer
 const ADC_MIN_THRESHOLD: f64 = 0.1; // If Hall-Effect sensor is on we should see Vcc/2
                                     // when bell is off - if this is below threshold
                                     // we assume that sensor is powered off
@@ -51,6 +47,16 @@ fn main() -> anyhow::Result<()> {
     let peripherals = Peripherals::take()?;
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs_default_partition = EspDefaultNvsPartition::take()?;
+
+    // Status display (C3-Zero onboard WS2812 LED pin = GPIO10)
+    let ws2812 = peripherals.pins.gpio10.downgrade_output();
+    let channel = peripherals.rmt.channel0;
+    let mut status = Ws2812RmtSingle::new(ws2812, channel, RgbLayout::Rgb)?;
+    status.set(rgb::OFF)?;
+
+    // Ring led
+    let mut ring_led = PinDriver::output(peripherals.pins.gpio6)?;
+    ring_led.set_high()?;
 
     // Initialise WiFi
     let mut wifi: EspWifi<'_> = EspWifi::new(
@@ -87,159 +93,114 @@ fn main() -> anyhow::Result<()> {
 
     log::info!("WiFi Config: {:?}", wifi_config);
 
-    let mut server = if let Some(config) = wifi_config {
+    let mut _server = if let Some(config) = wifi_config {
         log::info!("Connected to SSID: {}", config.ssid);
         log::info!("IP: {}", wifi.sta_netif().get_ip_info()?.ip);
         httpd::start_http_server()?
     } else {
         log::info!("No valid config found - starting AP");
         wifi::start_access_point(&mut wifi)?;
-        httpd::start_http_server()?;
-        loop {
-            log::info!("AP");
-            esp_idf_hal::delay::FreeRtos::delay_ms(2000);
-        }
+        log::info!("AP Mode - {:?}", wifi.ap_netif());
+        httpd::start_http_server()?
     };
-
-    loop {
-        log::info!("STA");
-        esp_idf_hal::delay::FreeRtos::delay_ms(2000);
-    }
-
-    /*
-
-    // Status LED (C3-Zero onboard RGB LED pin = GPIO10)
-    let ws2812 = peripherals.pins.gpio10.downgrade_output();
-    let channel = peripherals.rmt.channel0;
-    let mut status = Ws2812RmtSingle::new(ws2812, channel, RgbLayout::Rgb)?;
-    status.set(rgb::BLUE)?;
-
-    let mut led = PinDriver::output(peripherals.pins.gpio5)?;
-    led.set_high()?;
 
     adc_cont(
         peripherals.timer00,
         peripherals.adc1,
-        peripherals.pins.gpio2,
+        peripherals.pins.gpio4,
         &mut status,
-        &mut led,
-    )?;
-
-    */
+        &mut ring_led,
+    )
 }
 
-fn _adc_cont(
+fn adc_cont(
     timer: esp_idf_hal::timer::TIMER00,
     adc: esp_idf_hal::adc::ADC1,
-    adc_pin: esp_idf_hal::gpio::Gpio2,
-    status: &mut Ws2812RmtSingle<'_>,
-    led: &mut PinDriver<'_, esp_idf_hal::gpio::Gpio5, esp_idf_hal::gpio::Output>,
+    adc_pin: esp_idf_hal::gpio::Gpio4,
+    _status: &mut Ws2812RmtSingle<'_>,
+    ring_led: &mut PinDriver<'_, esp_idf_hal::gpio::Gpio6, esp_idf_hal::gpio::Output>,
 ) -> anyhow::Result<()> {
-    let mut config = AdcContConfig::default();
-    config.sample_freq = esp_idf_hal::units::Hertz(ADC_SAMPLE_RATE);
-    config.frame_measurements = ADC_BUFFER_LEN;
-    config.frames_count = 1;
-
-    let adc_pin = Attenuated::db11(adc_pin);
-    let mut adc = AdcContDriver::new(adc, &config, adc_pin)?;
-
+    // Setup Timer
     let mut timer = TimerDriver::new(timer, &Default::default())?;
     timer.enable(true)?;
     println!("=== Timer: {} Hz", timer.tick_hz());
-    let mut prev_t = timer.counter()?;
 
+    // Setup ADC
+    let mut config = AdcContConfig::default();
+    config.sample_freq = esp_idf_hal::units::Hertz(ADC_SAMPLE_RATE);
+    config.frame_measurements = ADC_BUFFER_LEN;
+    config.frames_count = 2; // Need 2 buffers as frames can be unaligned (?)
+
+    let adc_pin = Attenuated::db11(adc_pin);
+    let mut adc = AdcContDriver::new(adc, &config, adc_pin)?;
+    adc.start()?;
     println!(
         "=== ADC Samples - Sample Rate: {} / Samples: {} / ADC Config: {:?}",
         ADC_SAMPLE_RATE, ADC_BUFFER_LEN, config
     );
 
+    // State variables
     let mut samples = [AdcMeasurement::default(); ADC_BUFFER_LEN];
     let mut samples_f64 = [0_f64; ADC_BUFFER_LEN];
+    let mut ring_state = false;
+    let mut debounce = [false; 2];
     let mut count = 0_usize;
+    let mut frame = 0_usize;
     let mut prev = [1.0_f64; THRESHOLD_BUFFER];
-
-    adc.start()?;
+    let mut ticks = timer.counter()?;
 
     loop {
         match adc.read(&mut samples, TickType::new_millis(200).ticks()) {
-            Ok(_n) => {
+            Ok(n) => {
                 let now = timer.counter()?;
-                for (i, s) in samples.iter().enumerate() {
-                    samples_f64[i] = s.data() as f64 / 4096_f64;
-                }
-                let ring = check_ring(count, now - prev_t, &samples_f64, &mut prev);
-                match ring {
-                    true => {
-                        led.set_low()?;
-                        status.set(rgb::RED)?
-                    }
-                    false => {
-                        led.set_high()?;
-                        status.set(rgb::GREEN)?
-                    }
+
+                // We dont always get a full frame from the ADC so fill up
+                // samples_f64 with the data we do have
+
+                // Make sure we dont overrun samples_f64 array
+                let n = if frame + n > ADC_BUFFER_LEN {
+                    ADC_BUFFER_LEN - frame
+                } else {
+                    n
                 };
-                count += 1;
-                prev_t = now;
+
+                // Append frame to output
+                for i in 0..n {
+                    samples_f64[frame + i] = samples[i].data() as f64 / 4096_f64;
+                }
+                frame += n;
+
+                // When it's full process
+                if frame == ADC_BUFFER_LEN {
+                    let ring = check_ring(count, now - ticks, &samples_f64, &mut prev);
+                    debounce = [debounce[1], ring];
+                    match ring_state {
+                        true => {
+                            if debounce == [false, false] {
+                                ring_state = false;
+                                ring_led.set_high()?;
+                                println!(">> RING STOP",);
+                            }
+                        }
+                        false => {
+                            if debounce == [true, true] {
+                                ring_state = true;
+                                ring_led.set_low()?;
+                                println!(">> RING START",);
+                                // let _ = std::thread::spawn(|| {
+                                //     log::info!(">> Calling start webhook");
+                                send_pushover_alert()?;
+                                //});
+                            }
+                        }
+                    };
+                    count += 1;
+                    frame = 0;
+                    ticks = now;
+                }
             }
             Err(e) => println!("{:?}", e),
         }
-    }
-}
-
-fn _adc_timer(
-    timer: esp_idf_hal::timer::TIMER00,
-    adc: esp_idf_hal::adc::ADC1,
-    adc_pin: esp_idf_hal::gpio::Gpio2,
-) -> anyhow::Result<()> {
-    // Setup Timer
-    let timer_conf = TimerConfig::new().auto_reload(true);
-    let mut timer = TimerDriver::new(timer, &timer_conf)?;
-
-    // Setup ADC Timer
-    timer.set_alarm(timer.tick_hz() / ADC_SAMPLE_RATE as u64)?;
-
-    // Notification handler
-    let notification = Notification::new();
-    let notifier = notification.notifier();
-
-    // Safety: make sure the `Notification` object is not dropped while the subscription is active
-    unsafe {
-        timer.subscribe(move || {
-            let bitset = 0b10001010101;
-            notifier.notify_and_yield(NonZeroU32::new(bitset).unwrap());
-        })?;
-    }
-
-    // Setup ADC
-    let adc = AdcDriver::new(adc)?;
-    let config = AdcChannelConfig {
-        attenuation: DB_11,
-        ..Default::default()
-    };
-    let mut adc_pin = AdcChannelDriver::new(&adc, adc_pin, &config)?;
-
-    // Enable timer
-    timer.enable_interrupt()?;
-    timer.enable_alarm(true)?;
-    timer.enable(true)?;
-
-    let mut count = 0_usize;
-    let mut buf = [0_f64; ADC_BUFFER_LEN];
-    let mut prev = [1.0_f64; THRESHOLD_BUFFER];
-
-    loop {
-        // Ignore annoying clippy warning
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..buf.len() {
-            // Wait for notification
-            let bitset = notification.wait(esp_idf_hal::delay::BLOCK);
-            if let Some(_) = bitset {
-                buf[i] = adc.read(&mut adc_pin)? as f64 / 4096_f64;
-            }
-        }
-
-        check_ring(count, 0, &buf, &mut prev);
-        count += 1;
     }
 }
 
@@ -257,12 +218,9 @@ fn check_ring(
 
     if mean < ADC_MIN_THRESHOLD {
         // Hall-effect sensor probably off - ignore readings
-        // status.set(rgb::WHITE)?;
     } else {
         if ring {
-            // status.set(rgb::RED)?;
         } else {
-            // status.set(rgb::BLUE)?;
             // Update threshold buffer
             for i in 0..(THRESHOLD_BUFFER - 1) {
                 prev[i] = prev[i + 1];
@@ -272,4 +230,46 @@ fn check_ring(
     }
     println!("[{count}/{elapsed:06}] Mean: {mean:.4} :: Std Dev: {stddev:.4}/{threshold:.4} :: Ring: {ring}");
     ring
+}
+
+/// Send an HTTP POST request.
+fn send_pushover_alert() -> anyhow::Result<()> {
+    use embedded_svc::io::Write;
+
+    // HTTP Client
+    let config = &HttpConfiguration {
+        crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
+        ..Default::default()
+    };
+    let mut client = HttpClient::wrap(EspHttpConnection::new(&config)?);
+
+    // Pushover API payload
+    let app_token = "amfa9dzeck8bongtab3nrta3xux3hj";
+    let user = "uomfetdtawqotwp3ii9jpf4buys3p4";
+    let message = "DOORBELL";
+
+    let payload =
+        format!("{{\"token\":\"{app_token}\",\"user\":\"{user}\",\"message\":\"{message}\"}}");
+    let payload = payload.as_bytes();
+
+    // Prepare headers and URL
+    let content_length_header = format!("{}", payload.len());
+    let headers = [
+        ("content-type", "application/json"),
+        ("content-length", content_length_header.as_str()),
+        ("accept", "application/json"),
+    ];
+
+    let url = "https://api.pushover.net/1/messages.json";
+
+    let mut request = client.post(url, &headers)?;
+
+    request.write_all(payload)?;
+    request.flush()?;
+    log::info!("-> POST {url}");
+
+    let response = request.submit()?;
+    log::info!("<- {}", response.status());
+
+    Ok(())
 }
