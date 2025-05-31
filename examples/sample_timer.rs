@@ -60,8 +60,7 @@ fn main() -> Result<(), EspError> {
     let mut buf = [0_f64; SAMPLES];
 
     println!(
-        "=== ADC Samples - Sample Rate: {} / Samples: {}",
-        SAMPLE_RATE, SAMPLES
+        "=== ADC Samples - Sample Rate: {SAMPLE_RATE} / Samples: {SAMPLES}"
     );
 
     loop {
@@ -70,15 +69,14 @@ fn main() -> Result<(), EspError> {
         for i in 0..buf.len() {
             // Wait for notification
             let bitset = notification.wait(esp_idf_hal::delay::BLOCK);
-            if let Some(_) = bitset {
+            if bitset.is_some() {
                 buf[i] = adc.read(&mut adc_pin)? as f64 / 4096_f64;
             }
         }
         println!(
             "{}",
             buf.iter()
-                .enumerate()
-                .map(|(_i, v)| format!("{:.3}", v))
+                .map(|v| format!("{v:.3}"))
                 .collect::<Vec<_>>()
                 .join(","),
         );

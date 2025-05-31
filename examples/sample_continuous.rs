@@ -11,13 +11,13 @@ enum Mode {
 }
 
 // Need to be careful of FreeRTOS watchdog crashes with sample buffers > 200 samples (??)
-const SAMPLES: usize = 100;
+const ADC_BUFFER_LEN: usize = 100;
 // Min sample rate for continuous driver is 1kHz
-const SAMPLE_RATE: u32 = 1000;
+const ADC_SAMPLE_RATE: u32 = 1000;
 const MODE: Mode = Mode::Stats;
 
-fn stats(buf: &[f64; SAMPLES]) -> (f64, f64) {
-    let mean = buf.iter().sum::<f64>() / SAMPLES as f64;
+fn stats(buf: &[f64; ADC_BUFFER_LEN]) -> (f64, f64) {
+    let mean = buf.iter().sum::<f64>() / ADC_BUFFER_LEN as f64;
     let var = buf
         .iter()
         .map(|v| {
@@ -25,7 +25,7 @@ fn stats(buf: &[f64; SAMPLES]) -> (f64, f64) {
             diff * diff
         })
         .sum::<f64>();
-    let var = var / SAMPLES as f64;
+    let var = var / ADC_BUFFER_LEN as f64;
     (mean, var.sqrt())
 }
 
@@ -39,16 +39,18 @@ fn main() -> Result<(), EspError> {
 
     let peripherals = Peripherals::take()?;
 
-    let mut config = AdcContConfig::default();
-    config.sample_freq = esp_idf_hal::units::Hertz(SAMPLE_RATE);
-    config.frame_measurements = SAMPLES;
-    config.frames_count = 2; // Need 2 buffers as frames can be unaligned (?)
+    // Setup ADC
+    let adc_config = AdcContConfig {
+        sample_freq: esp_idf_hal::units::Hertz(ADC_SAMPLE_RATE),
+        frame_measurements: ADC_BUFFER_LEN,
+        frames_count: 2, // Need 2 buffers as frames can be unaligned (?)
+    };
 
     let adc_pin = Attenuated::db11(peripherals.pins.gpio4);
-    let mut adc = AdcContDriver::new(peripherals.adc1, &config, adc_pin)?;
+    let mut adc = AdcContDriver::new(peripherals.adc1, &adc_config, adc_pin)?;
 
-    let mut samples = [AdcMeasurement::default(); SAMPLES];
-    let mut samples_f64 = [0_f64; SAMPLES];
+    let mut samples = [AdcMeasurement::default(); ADC_BUFFER_LEN];
+    let mut samples_f64 = [0_f64; ADC_BUFFER_LEN];
 
     adc.start()?;
 
@@ -58,8 +60,7 @@ fn main() -> Result<(), EspError> {
     let mut prev = timer.counter()?;
 
     println!(
-        "=== ADC Samples - Sample Rate: {} / Samples: {} / ADC Config: {:?}",
-        SAMPLE_RATE, SAMPLES, config
+        "=== ADC Samples - Sample Rate: {ADC_SAMPLE_RATE} / Samples: {ADC_BUFFER_LEN} / ADC Config: {adc_config:?}"
     );
 
     let mut count = 0_usize;
@@ -77,8 +78,8 @@ fn main() -> Result<(), EspError> {
                 // samples_f64 with the data we do have
 
                 // Make sure we dont overrun samples_f64 array
-                let n = if frame + n > SAMPLES {
-                    SAMPLES - frame
+                let n = if frame + n > ADC_BUFFER_LEN {
+                    ADC_BUFFER_LEN - frame
                 } else {
                     n
                 };
@@ -90,7 +91,7 @@ fn main() -> Result<(), EspError> {
                 frame += n;
 
                 // When it's full process
-                if frame == SAMPLES {
+                if frame == ADC_BUFFER_LEN {
                     for (i, s) in samples.iter().enumerate() {
                         samples_f64[i] = s.data() as f64 / 4096_f64;
                     }
@@ -105,7 +106,7 @@ fn main() -> Result<(), EspError> {
                                 "{}",
                                 samples_f64
                                     .iter()
-                                    .map(|v| format!("{:.3}", v))
+                                    .map(|v| format!("{v:.3}"))
                                     .collect::<Vec<_>>()
                                     .join(","),
                             );
@@ -116,7 +117,7 @@ fn main() -> Result<(), EspError> {
                     frame = 0;
                 }
             }
-            Err(e) => println!("{:?}", e),
+            Err(e) => println!("{e:?}"),
         }
     }
 }
