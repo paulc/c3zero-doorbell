@@ -4,7 +4,6 @@ use esp_idf_svc::hal::prelude::*;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::EspWifi;
 
-// Local imports
 use doorbell::httpd;
 use doorbell::nvs::APStore;
 use doorbell::wifi::{self, APConfig};
