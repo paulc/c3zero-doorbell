@@ -56,7 +56,7 @@ fn handle_config(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()>
     let aps = match APStore::get_known_aps() {
         Ok(aps) => aps,
         Err(e) => {
-            log::info!("get_known_aps: {:?}", e);
+            log::info!("get_known_aps: {e:?}");
             vec![]
         }
     };
@@ -92,7 +92,7 @@ fn handle_delete(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()>
     if APStore::get_ap_config(&ssid)?.is_some() {
         match APStore::delete_ap(&ssid) {
             Ok(_) => {
-                log::info!("Successfully deleted SSID: {}", ssid);
+                log::info!("Successfully deleted SSID: {ssid}");
                 request.into_response(
                     302,
                     Some("Successfully deleted SSID"),
@@ -100,7 +100,7 @@ fn handle_delete(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()>
                 )?;
             }
             Err(e) => {
-                log::error!("Failed to delete SSID: {} - {}", ssid, e);
+                log::error!("Failed to delete SSID: {ssid} - {e}");
                 request.into_response(
                     302,
                     Some("Failed to delete SSID"),
@@ -109,7 +109,7 @@ fn handle_delete(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()>
             }
         }
     } else {
-        log::error!("Unknown SSID: {}", ssid);
+        log::error!("Unknown SSID: {ssid}");
         request.into_response(302, Some("Unknown SSID"), &[("Location", "/config")])?;
     }
     Ok::<(), anyhow::Error>(())
@@ -123,7 +123,7 @@ fn handle_add(mut request: Request<&mut EspHttpConnection>) -> anyhow::Result<()
     match serde_urlencoded::from_bytes(&buf[0..len]) {
         Ok(config) => {
             // Save the WiFi configuration
-            log::info!("++ Config: {:?}", config);
+            log::info!("++ Config: {config:?}");
             log::info!(
                 "-- Config: {:?}",
                 crate::wifi::APConfig::new("ABCD", "123456789")?

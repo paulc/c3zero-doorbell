@@ -27,7 +27,7 @@ impl APStore {
             if let Ok(Some(data)) = nvs.get_raw("KNOWN_APS", &mut data) {
                 known_aps = serde_json::from_slice(data)?;
             }
-            log::info!("KNOWN_APS >> {:?}", known_aps);
+            log::info!("KNOWN_APS >> {known_aps:?}");
             let mut aps = KNOWN_APS.lock().unwrap();
             *aps = known_aps;
         }
@@ -41,16 +41,16 @@ impl APStore {
         let mut nvs = NVS.lock().unwrap();
         let nvs = nvs.as_mut().ok_or(anyhow::anyhow!("NVS not initialized"))?;
 
-        log::info!("Setting NVS: {}", key);
+        log::info!("Setting NVS: {key}");
         nvs.set_raw(key, value)?;
 
-        log::info!("Getting NVS: {}", key);
+        log::info!("Getting NVS: {key}");
         let mut data = [0_u8; 1024];
         if let Ok(Some(data)) = nvs.get_raw(key, &mut data) {
             log::info!("Found Key: {} len={} data={:?}", key, data.len(), data);
         }
 
-        log::info!("Removing Key: {}", key);
+        log::info!("Removing Key: {key}");
         nvs.remove(key)?;
         Ok(())
     }
@@ -97,7 +97,7 @@ impl APStore {
         let mut nvs = NVS.lock().unwrap();
         let nvs = nvs.as_mut().ok_or(anyhow::anyhow!("NVS not initialized"))?;
 
-        log::info!("Deleting SSID: {}", ssid);
+        log::info!("Deleting SSID: {ssid}");
         let k = hash_ssid(ssid);
         nvs.remove(k.as_str())?;
 
@@ -115,7 +115,7 @@ impl APStore {
             nvs.set_raw("KNOWN_APS", known_aps.as_slice())
                 .map_err(|e| anyhow::anyhow!("Error updating KNOWN_APS: [{}]", e))?;
         }
-        log::info!("Updating KNOWN_APS: {:?}", known_aps);
+        log::info!("Updating KNOWN_APS: {known_aps:?}");
 
         // Update KNOWN_APS static
         let mut aps = KNOWN_APS.lock().unwrap();
@@ -128,7 +128,7 @@ impl APStore {
         let mut data = [0_u8; SAVED_AP_LEN];
         if let Ok(Some(data)) = nvs.get_raw(hash_ssid(ssid).as_str(), &mut data) {
             let config: APConfig = serde_json::from_slice(data)?;
-            log::info!("Found Wifi Config: {}", ssid);
+            log::info!("Found Wifi Config: {ssid}");
             Ok(Some(config))
         } else {
             Ok(None)

@@ -91,7 +91,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    log::info!("WiFi Config: {:?}", wifi_config);
+    log::info!("WiFi Config: {wifi_config:?}");
 
     let mut _server = if let Some(config) = wifi_config {
         log::info!("Connected to SSID: {}", config.ssid);
@@ -126,17 +126,17 @@ fn adc_cont(
     println!("=== Timer: {} Hz", timer.tick_hz());
 
     // Setup ADC
-    let mut config = AdcContConfig::default();
-    config.sample_freq = esp_idf_hal::units::Hertz(ADC_SAMPLE_RATE);
-    config.frame_measurements = ADC_BUFFER_LEN;
-    config.frames_count = 2; // Need 2 buffers as frames can be unaligned (?)
+    let adc_config = AdcContConfig {
+        sample_freq: esp_idf_hal::units::Hertz(ADC_SAMPLE_RATE),
+        frame_measurements: ADC_BUFFER_LEN,
+        frames_count: 2, // Need 2 buffers as frames can be unaligned (?)
+    };
 
     let adc_pin = Attenuated::db11(adc_pin);
-    let mut adc = AdcContDriver::new(adc, &config, adc_pin)?;
+    let mut adc = AdcContDriver::new(adc, &adc_config, adc_pin)?;
     adc.start()?;
     println!(
-        "=== ADC Samples - Sample Rate: {} / Samples: {} / ADC Config: {:?}",
-        ADC_SAMPLE_RATE, ADC_BUFFER_LEN, config
+        "=== ADC Samples - Sample Rate: {ADC_SAMPLE_RATE} / Samples: {ADC_BUFFER_LEN} / ADC Config: {adc_config:?}"
     );
 
     // State variables
@@ -199,7 +199,7 @@ fn adc_cont(
                     ticks = now;
                 }
             }
-            Err(e) => println!("{:?}", e),
+            Err(e) => println!("{e:?}"),
         }
     }
 }
@@ -210,7 +210,7 @@ fn check_ring(
     buf: &[f64; ADC_BUFFER_LEN],
     prev: &mut [f64; THRESHOLD_BUFFER],
 ) -> bool {
-    let (mean, stddev) = stats(&buf);
+    let (mean, stddev) = stats(buf);
     let threshold = prev.iter().sum::<f64>() / prev.len() as f64;
 
     // Trigger if stddev > 2.5 * threshold
@@ -218,15 +218,13 @@ fn check_ring(
 
     if mean < ADC_MIN_THRESHOLD {
         // Hall-effect sensor probably off - ignore readings
+    } else if ring {
     } else {
-        if ring {
-        } else {
-            // Update threshold buffer
-            for i in 0..(THRESHOLD_BUFFER - 1) {
-                prev[i] = prev[i + 1];
-            }
-            prev[THRESHOLD_BUFFER - 1] = stddev;
+        // Update threshold buffer
+        for i in 0..(THRESHOLD_BUFFER - 1) {
+            prev[i] = prev[i + 1];
         }
+        prev[THRESHOLD_BUFFER - 1] = stddev;
     }
     println!("[{count}/{elapsed:06}] Mean: {mean:.4} :: Std Dev: {stddev:.4}/{threshold:.4} :: Ring: {ring}");
     ring
@@ -241,7 +239,7 @@ fn send_pushover_alert() -> anyhow::Result<()> {
         crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
         ..Default::default()
     };
-    let mut client = HttpClient::wrap(EspHttpConnection::new(&config)?);
+    let mut client = HttpClient::wrap(EspHttpConnection::new(config)?);
 
     // Pushover API payload
     let app_token = "amfa9dzeck8bongtab3nrta3xux3hj";
