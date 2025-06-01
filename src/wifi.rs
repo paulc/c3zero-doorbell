@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use crate::nvs::APStore;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct APConfig {
     pub ssid: String<32>,
     pub password: String<64>,
