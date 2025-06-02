@@ -60,6 +60,13 @@ impl APStore {
             .unwrap_or(HashMap::new());
         Ok(out.into_values())
     }
+    pub fn get_ap(ssid: &str) -> anyhow::Result<Option<APConfig>> {
+        let out = NVStore::get::<HashMap<heapless::String<32>, APConfig>>("aps")?
+            .unwrap_or(HashMap::new());
+        let ssid =
+            heapless::String::<32>::try_from(ssid).map_err(|_| anyhow::anyhow!("Invaled SSID"))?;
+        Ok(out.get(&ssid).cloned())
+    }
     pub fn add_ap(ap: APConfig) -> anyhow::Result<()> {
         let mut aps = NVStore::get::<HashMap<heapless::String<32>, APConfig>>("aps")?
             .unwrap_or(HashMap::new());
@@ -77,29 +84,6 @@ impl APStore {
         NVStore::set("aps", aps)?;
         Ok(())
     }
-    /*
-    pub fn delete_ap(ssid: &str) -> anyhow::Result<Vec<APConfig>> {
-        let mut nvs = NVSTORE.lock().unwrap();
-        let nvs = nvs.as_mut().ok_or(anyhow::anyhow!("NVS not initialized"))?;
-        let mut data = [0_u8; AP_STORE_LEN];
-        let mut aps: Vec<APConfig> = if let Ok(Some(data)) = nvs.get_raw("AP_DATA", &mut data) {
-            serde_json::from_slice(data)?
-        } else {
-            // Empty
-            Vec::new()
-        };
-        // Delete SSID
-        aps = aps
-            .into_iter()
-            .filter(|x| x.ssid != ssid)
-            .collect::<Vec<_>>();
-        let aps_json = serde_json::to_vec(&aps)?;
-        nvs.set_raw("AP_DATA", aps_json.as_slice())
-            .map_err(|e| anyhow::anyhow!("Error updating AP_DATA: [{}]", e))?;
-
-        Ok(aps)
-    }
-    */
 }
 
 fn main() -> anyhow::Result<()> {
@@ -118,7 +102,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut aps: HashMap<heapless::String<32>, APConfig> =
         NVStore::get("aps")?.unwrap_or(HashMap::new());
-    println!("{aps:?}");
+    println!("{:?}", aps);
 
     aps.insert(
         "TEST"
@@ -131,7 +115,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut aps: HashMap<heapless::String<32>, APConfig> =
         NVStore::get("aps")?.unwrap_or(HashMap::new());
-    println!("{aps:?}");
+    println!("{:?}", aps);
 
     aps.insert(
         "TEST"
@@ -144,7 +128,7 @@ fn main() -> anyhow::Result<()> {
 
     let aps: HashMap<heapless::String<32>, APConfig> =
         NVStore::get("aps")?.unwrap_or(HashMap::new());
-    println!("{aps:?}");
+    println!("{:?}", aps);
 
     /*
         let nvs_default_partition = EspDefaultNvsPartition::take()?;

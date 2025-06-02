@@ -5,8 +5,7 @@ use esp_idf_svc::http::server::{
 };
 use esp_idf_sys as _; // Import the ESP-IDF bindings
 
-use crate::nvs::APStore;
-use crate::wifi::WIFI_SCAN;
+use crate::wifi::{APStore, WIFI_SCAN};
 
 #[derive(askama::Template)]
 #[template(path = "config_page.html")]
@@ -53,8 +52,8 @@ fn handle_reset(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> 
 }
 
 fn handle_config(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
-    let aps = match APStore::get_known_aps() {
-        Ok(aps) => aps,
+    let aps = match APStore::get_aps() {
+        Ok(aps) => aps.collect::<Vec<_>>(),
         Err(e) => {
             log::info!("get_known_aps: {e:?}");
             vec![]
@@ -77,7 +76,7 @@ fn handle_config(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()>
         .collect::<Vec<_>>();
     let config_page = ConfigPage {
         visible,
-        aps: aps.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        aps: aps.iter().map(|s| s.ssid.as_str()).collect::<Vec<_>>(),
     };
     let mut response = request.into_ok_response()?;
     let html = config_page.render()?;
@@ -89,7 +88,7 @@ fn handle_delete(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()>
     log::info!("DELETE: {:?}", request.uri());
     let ssid = request.uri().split('/').next_back().expect("Invalid SSID");
     let ssid = urlencoding::decode(ssid)?;
-    if APStore::get_ap_config(&ssid)?.is_some() {
+    if APStore::get_ap_str(&ssid)?.is_some() {
         match APStore::delete_ap(&ssid) {
             Ok(_) => {
                 log::info!("Successfully deleted SSID: {ssid}");

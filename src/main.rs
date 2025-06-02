@@ -55,7 +55,7 @@ fn main() -> anyhow::Result<()> {
     wifi::wifi_scan(&mut wifi)?;
 
     // Initislise NVS APStore
-    nvs::APStore::init(nvs_default_partition.clone())?;
+    nvs::NVStore::init(nvs_default_partition.clone(), "DOORBELL")?;
 
     let mut wifi_config: Option<wifi::APConfig> = None;
 
