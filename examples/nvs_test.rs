@@ -102,7 +102,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut aps: HashMap<heapless::String<32>, APConfig> =
         NVStore::get("aps")?.unwrap_or(HashMap::new());
-    println!("{:?}", aps);
+    println!("{aps:?}");
 
     aps.insert(
         "TEST"
@@ -115,7 +115,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut aps: HashMap<heapless::String<32>, APConfig> =
         NVStore::get("aps")?.unwrap_or(HashMap::new());
-    println!("{:?}", aps);
+    println!("{aps:?}");
 
     aps.insert(
         "TEST"
@@ -128,7 +128,7 @@ fn main() -> anyhow::Result<()> {
 
     let aps: HashMap<heapless::String<32>, APConfig> =
         NVStore::get("aps")?.unwrap_or(HashMap::new());
-    println!("{:?}", aps);
+    println!("{aps:?}");
 
     /*
         let nvs_default_partition = EspDefaultNvsPartition::take()?;

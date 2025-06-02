@@ -5,7 +5,7 @@ use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::EspWifi;
 
 use doorbell::httpd;
-use doorbell::nvs::APStore;
+use doorbell::nvs::NVStore;
 use doorbell::wifi::{self, APConfig};
 
 fn main() -> anyhow::Result<()> {
@@ -33,8 +33,8 @@ fn main() -> anyhow::Result<()> {
     // Initial scan
     wifi::wifi_scan(&mut wifi)?;
 
-    // Initislise NVS APStore
-    APStore::init(nvs_default_partition.clone())?;
+    // Initislise NVStore
+    NVStore::init(nvs_default_partition.clone(), "DOORBELL")?;
 
     let mut wifi_config: Option<APConfig> = None;
     for config in wifi::find_known_aps() {
