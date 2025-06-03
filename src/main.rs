@@ -119,10 +119,12 @@ fn main() -> anyhow::Result<()> {
             Ok(msg) => match msg {
                 adc::RingMessage::RingStart => {
                     log::info!("adc_rx :: {msg:?}");
+                    ring_led.set_low()?;
                     alert_tx.send(alert::AlertMessage::RingStart)?;
                 }
                 adc::RingMessage::RingStop => {
                     log::info!("adc_rx :: {msg:?}");
+                    ring_led.set_high()?;
                 }
                 adc::RingMessage::Stats(s) => {
                     log::info!(
@@ -136,7 +138,11 @@ fn main() -> anyhow::Result<()> {
                     );
                 }
             },
-            Err(mpsc::RecvTimeoutError::Timeout) => log::info!("adc_rx :: tick"),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                log::info!("adc_rx :: tick");
+                status.set(rgb::BLUE)?;
+                status.set(rgb::OFF)?;
+            }
             Err(e) => log::error!("ERROR :: adc_rx :: {e:?}"),
         }
     }
