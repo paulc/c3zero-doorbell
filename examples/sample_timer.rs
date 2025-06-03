@@ -59,7 +59,7 @@ fn main() -> Result<(), EspError> {
     let mut adc_pin = AdcChannelDriver::new(&adc, peripherals.pins.gpio2, &config)?;
     let mut buf = [0_f64; SAMPLES];
 
-    println!("=== ADC Samples - Sample Rate: {SAMPLE_RATE} / Samples: {SAMPLES}");
+    log::info!("=== ADC Samples - Sample Rate: {SAMPLE_RATE} / Samples: {SAMPLES}");
 
     loop {
         // Ignore annoying clippy warning
@@ -71,7 +71,7 @@ fn main() -> Result<(), EspError> {
                 buf[i] = adc.read(&mut adc_pin)? as f64 / 4096_f64;
             }
         }
-        println!(
+        log::info!(
             "{}",
             buf.iter()
                 .map(|v| format!("{v:.3}"))

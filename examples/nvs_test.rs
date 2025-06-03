@@ -102,7 +102,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut aps: HashMap<heapless::String<32>, APConfig> =
         NVStore::get("aps")?.unwrap_or(HashMap::new());
-    println!("{aps:?}");
+    log::info!("{aps:?}");
 
     aps.insert(
         "TEST"
@@ -115,7 +115,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut aps: HashMap<heapless::String<32>, APConfig> =
         NVStore::get("aps")?.unwrap_or(HashMap::new());
-    println!("{aps:?}");
+    log::info!("{aps:?}");
 
     aps.insert(
         "TEST"
@@ -128,20 +128,7 @@ fn main() -> anyhow::Result<()> {
 
     let aps: HashMap<heapless::String<32>, APConfig> =
         NVStore::get("aps")?.unwrap_or(HashMap::new());
-    println!("{aps:?}");
-
-    /*
-        let nvs_default_partition = EspDefaultNvsPartition::take()?;
-
-        APStore::init(nvs_default_partition.clone(), "DOORBELL")?;
-
-        println!("{:?}", APStore::get_aps()?);
-        APStore::add_ap(APConfig::new("TEST1", "ABCD")?)?;
-        APStore::add_ap(APConfig::new("TEST2", "ABCD")?)?;
-        println!("{:?}", APStore::get_aps()?);
-        APStore::delete_ap("TEST1")?;
-        println!("{:?}", APStore::get_aps()?);
-    */
+    log::info!("{aps:?}");
 
     loop {
         FreeRtos::delay_ms(1000); // Delay for 100 milliseconds

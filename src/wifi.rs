@@ -163,7 +163,7 @@ pub fn start_access_point(wifi: &mut EspWifi) -> anyhow::Result<()> {
     wifi.set_configuration(&Configuration::AccessPoint(ap_config))?;
     wifi.start()?;
 
-    println!("Access Point started. Connect to ESP32C3-AP with password 'password'");
+    log::info!("Access Point started. Connect to ESP32C3-AP with password 'password'");
 
     Ok(())
 }

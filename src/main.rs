@@ -4,6 +4,10 @@ use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::EspWifi;
 
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
+
 use doorbell::httpd;
 use doorbell::nvs;
 use doorbell::rgb;
@@ -11,7 +15,7 @@ use doorbell::wifi;
 use doorbell::ws2812;
 
 mod adc;
-mod pushover;
+mod alert;
 mod stats;
 
 pub const ADC_SAMPLE_RATE: u32 = 1000; // 1kHz sample rate
@@ -89,10 +93,51 @@ fn main() -> anyhow::Result<()> {
         httpd::start_http_server()?
     };
 
-    adc::adc_continuous(
-        peripherals.timer00,
-        peripherals.adc1,
-        peripherals.pins.gpio4,
-        &mut ring_led,
-    )
+    // ADC Channel
+    let (adc_tx, adc_rx) = mpsc::channel();
+
+    // Need to expand stack size as we allocate ADC & FP buffers on stack
+    thread::Builder::new().stack_size(8192).spawn(move || {
+        adc::adc_task(
+            peripherals.timer00,
+            peripherals.adc1,
+            peripherals.pins.gpio4,
+            adc_tx,
+            false,
+        )
+    })?;
+
+    // Alert Channel
+    let (alert_tx, alert_rx) = mpsc::channel();
+
+    thread::Builder::new()
+        .stack_size(8192)
+        .spawn(move || alert::alert_task(alert_rx))?;
+
+    loop {
+        match adc_rx.recv_timeout(Duration::from_millis(500)) {
+            Ok(msg) => match msg {
+                adc::RingMessage::RingStart => {
+                    log::info!("adc_rx :: {msg:?}");
+                    alert_tx.send(alert::AlertMessage::RingStart)?;
+                }
+                adc::RingMessage::RingStop => {
+                    log::info!("adc_rx :: {msg:?}");
+                }
+                adc::RingMessage::Stats(s) => {
+                    log::info!(
+                        "[{}/{:06}] Mean: {:.4} :: Std Dev: {:.4}/{:.4} :: Ring: {}",
+                        s.count,
+                        s.elapsed,
+                        s.mean,
+                        s.stddev,
+                        s.threshold,
+                        s.ring
+                    );
+                }
+            },
+            Err(mpsc::RecvTimeoutError::Timeout) => log::info!("adc_rx :: tick"),
+            Err(e) => log::error!("ERROR :: adc_rx :: {e:?}"),
+        }
+    }
 }

@@ -56,10 +56,10 @@ fn main() -> Result<(), EspError> {
 
     let mut timer = TimerDriver::new(peripherals.timer00, &Default::default())?;
     timer.enable(true)?;
-    println!("=== Timer: {} Hz", timer.tick_hz());
+    log::info!("=== Timer: {} Hz", timer.tick_hz());
     let mut prev = timer.counter()?;
 
-    println!(
+    log::info!(
         "=== ADC Samples - Sample Rate: {ADC_SAMPLE_RATE} / Samples: {ADC_BUFFER_LEN} / ADC Config: {adc_config:?}"
     );
 
@@ -99,10 +99,10 @@ fn main() -> Result<(), EspError> {
                         Mode::Stats => {
                             let ticks = now - prev;
                             let (mean, sd) = stats(&samples_f64);
-                            println!("{count} [{ticks}] : Mean = {mean:.3} / Std Dev = {sd:.3}",);
+                            log::info!("{count} [{ticks}] : Mean = {mean:.3} / Std Dev = {sd:.3}",);
                         }
                         Mode::Samples => {
-                            println!(
+                            log::info!(
                                 "{}",
                                 samples_f64
                                     .iter()
@@ -117,7 +117,7 @@ fn main() -> Result<(), EspError> {
                     frame = 0;
                 }
             }
-            Err(e) => println!("{e:?}"),
+            Err(e) => log::info!("{e:?}"),
         }
     }
 }

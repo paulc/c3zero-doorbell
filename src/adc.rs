@@ -1,22 +1,41 @@
 use esp_idf_hal::delay::TickType;
-use esp_idf_hal::gpio::PinDriver;
 use esp_idf_hal::timer::TimerDriver;
 use esp_idf_svc::hal::adc::{AdcContConfig, AdcContDriver, AdcMeasurement, Attenuated};
+use std::sync::mpsc;
 
 use crate::ADC_BUFFER_LEN;
 use crate::ADC_SAMPLE_RATE;
 use crate::THRESHOLD_BUFFER;
 
-pub fn adc_continuous(
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct Stats {
+    pub count: usize,
+    pub elapsed: u64,
+    pub mean: f64,
+    pub stddev: f64,
+    pub threshold: f64,
+    pub ring: bool,
+}
+
+#[derive(Debug)]
+pub enum RingMessage {
+    RingStart,
+    RingStop,
+    Stats(Stats),
+}
+
+pub fn adc_task(
     timer: esp_idf_hal::timer::TIMER00,
     adc: esp_idf_hal::adc::ADC1,
     adc_pin: esp_idf_hal::gpio::Gpio4,
-    ring_led: &mut PinDriver<'_, esp_idf_hal::gpio::Gpio6, esp_idf_hal::gpio::Output>,
+    tx: mpsc::Sender<RingMessage>,
+    stats: bool,
 ) -> anyhow::Result<()> {
     // Setup Timer
     let mut timer = TimerDriver::new(timer, &Default::default())?;
     timer.enable(true)?;
-    println!("=== Timer: {} Hz", timer.tick_hz());
+    log::info!("=== Timer: {} Hz", timer.tick_hz());
 
     // Setup ADC
     let adc_config = AdcContConfig {
@@ -28,7 +47,7 @@ pub fn adc_continuous(
     let adc_pin = Attenuated::db11(adc_pin);
     let mut adc = AdcContDriver::new(adc, &adc_config, adc_pin)?;
     adc.start()?;
-    println!(
+    log::info!(
         "=== ADC Samples - Sample Rate: {ADC_SAMPLE_RATE} / Samples: {ADC_BUFFER_LEN} / ADC Config: {adc_config:?}"
     );
 
@@ -37,10 +56,15 @@ pub fn adc_continuous(
     let mut samples_f64 = [0_f64; ADC_BUFFER_LEN];
     let mut ring_state = false;
     let mut debounce = [false; 2];
-    let mut count = 0_usize;
     let mut frame = 0_usize;
     let mut prev = [1.0_f64; THRESHOLD_BUFFER];
     let mut ticks = timer.counter()?;
+    let mut count = 0_usize;
+
+    unsafe {
+        let stack_remaining = esp_idf_sys::uxTaskGetStackHighWaterMark(std::ptr::null_mut());
+        log::info!("Stack remaining: {stack_remaining} bytes");
+    }
 
     loop {
         match adc.read(&mut samples, TickType::new_millis(200).ticks()) {
@@ -63,37 +87,44 @@ pub fn adc_continuous(
                 }
                 frame += n;
 
-                // When it's full process
+                // When it's full process frame
                 if frame == ADC_BUFFER_LEN {
-                    let ring =
-                        crate::stats::check_ring(count, now - ticks, &samples_f64, &mut prev);
+                    let elapsed = now - ticks;
+                    let (mean, stddev) = crate::stats::stats(&samples_f64);
+                    let (ring, threshold) = crate::stats::check_ring(mean, stddev, &mut prev);
+
+                    if stats {
+                        tx.send(RingMessage::Stats(Stats {
+                            count,
+                            elapsed,
+                            mean,
+                            stddev,
+                            threshold,
+                            ring,
+                        }))?;
+                    }
+
                     debounce = [debounce[1], ring];
                     match ring_state {
                         true => {
                             if debounce == [false, false] {
                                 ring_state = false;
-                                ring_led.set_high()?;
-                                println!(">> RING STOP",);
+                                tx.send(RingMessage::RingStop)?;
                             }
                         }
                         false => {
                             if debounce == [true, true] {
                                 ring_state = true;
-                                ring_led.set_low()?;
-                                println!(">> RING START",);
-                                // let _ = std::thread::spawn(|| {
-                                //     log::info!(">> Calling start webhook");
-                                crate::pushover::send_pushover_alert()?;
-                                //});
+                                tx.send(RingMessage::RingStart)?;
                             }
                         }
-                    };
+                    }
                     count += 1;
                     frame = 0;
                     ticks = now;
                 }
             }
-            Err(e) => println!("{e:?}"),
+            Err(e) => log::error!("ERROR :: adc_task :: {e:?}"),
         }
     }
 }
