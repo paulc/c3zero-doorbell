@@ -1,6 +1,6 @@
-use crate::ADC_BUFFER_LEN;
-use crate::ADC_MIN_THRESHOLD;
-use crate::THRESHOLD_BUFFER;
+use crate::adc::ADC_BUFFER_LEN;
+use crate::adc::ADC_MIN_THRESHOLD;
+use crate::adc::THRESHOLD_BUFFER;
 
 pub fn stats(buf: &[f64; ADC_BUFFER_LEN]) -> (f64, f64) {
     let mean = buf.iter().sum::<f64>() / ADC_BUFFER_LEN as f64;

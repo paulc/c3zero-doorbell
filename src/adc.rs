@@ -3,9 +3,12 @@ use esp_idf_hal::timer::TimerDriver;
 use esp_idf_svc::hal::adc::{AdcContConfig, AdcContDriver, AdcMeasurement, Attenuated};
 use std::sync::mpsc;
 
-use crate::ADC_BUFFER_LEN;
-use crate::ADC_SAMPLE_RATE;
-use crate::THRESHOLD_BUFFER;
+pub const ADC_SAMPLE_RATE: u32 = 1000; // 1kHz sample rate
+pub const ADC_BUFFER_LEN: usize = 50; // 50ms sample buffer
+pub const ADC_MIN_THRESHOLD: f64 = 0.1; // If Hall-Effect sensor is on we should see Vcc/2
+                                        // when bell is off - if this is below threshold
+                                        // we assume that sensor is powered off
+pub const THRESHOLD_BUFFER: usize = 5; // Average std-dev threshold over this number of frames
 
 #[allow(dead_code)]
 #[derive(Debug)]

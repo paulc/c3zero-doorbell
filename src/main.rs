@@ -1,5 +1,6 @@
 use esp_idf_hal::gpio::{OutputPin, PinDriver};
 use esp_idf_hal::peripherals::Peripherals;
+use esp_idf_hal::task::watchdog::{TWDTConfig, TWDTDriver};
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::EspWifi;
@@ -7,8 +8,6 @@ use esp_idf_svc::wifi::EspWifi;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-
-// use anyhow::Context;
 
 use doorbell::httpd;
 use doorbell::nvs;
@@ -19,13 +18,6 @@ use doorbell::ws2812;
 mod adc;
 mod alert;
 mod stats;
-
-pub const ADC_SAMPLE_RATE: u32 = 1000; // 1kHz sample rate
-pub const ADC_BUFFER_LEN: usize = 50; // 50ms sample buffer
-pub const ADC_MIN_THRESHOLD: f64 = 0.1; // If Hall-Effect sensor is on we should see Vcc/2
-                                        // when bell is off - if this is below threshold
-                                        // we assume that sensor is powered off
-pub const THRESHOLD_BUFFER: usize = 5; // Average std-dev threshold over this number of frames
 
 fn main() -> anyhow::Result<()> {
     esp_idf_hal::sys::link_patches();
@@ -39,6 +31,14 @@ fn main() -> anyhow::Result<()> {
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs_default_partition = EspDefaultNvsPartition::take()?;
 
+    // Hardware Watchdog
+    let twdt_config = TWDTConfig {
+        duration: Duration::from_secs(2),
+        panic_on_trigger: true,
+        subscribed_idle_tasks: enumset::enum_set!(esp_idf_hal::cpu::Core::Core0),
+    };
+    let mut twdt_driver = TWDTDriver::new(peripherals.twdt, &twdt_config)?;
+
     // Status display (C3-Zero onboard WS2812 LED pin = GPIO10)
     let ws2812 = peripherals.pins.gpio10.downgrade_output();
     let channel = peripherals.rmt.channel0;
@@ -48,6 +48,9 @@ fn main() -> anyhow::Result<()> {
     // Ring led
     let mut ring_led = PinDriver::output(peripherals.pins.gpio6)?;
     ring_led.set_high()?;
+
+    // Initislise NVStore
+    nvs::NVStore::init(nvs_default_partition.clone(), "DOORBELL")?;
 
     // Initialise WiFi
     let mut wifi: EspWifi<'_> = EspWifi::new(
@@ -59,9 +62,6 @@ fn main() -> anyhow::Result<()> {
 
     // Initial scan
     wifi::wifi_scan(&mut wifi)?;
-
-    // Initislise NVS APStore
-    nvs::NVStore::init(nvs_default_partition.clone(), "DOORBELL")?;
 
     let mut wifi_config: Option<wifi::APConfig> = None;
 
@@ -120,6 +120,9 @@ fn main() -> anyhow::Result<()> {
         .spawn(move || alert::alert_task(alert_rx))
         .expect("Error starting alert_task:");
 
+    // Dont configure watchdog until we have setup background tasks
+    let mut watchdog = twdt_driver.watch_current_task()?;
+
     loop {
         // Check tasks still running - restart if not
         if adc_task.is_finished() || alert_task.is_finished() {
@@ -136,6 +139,7 @@ fn main() -> anyhow::Result<()> {
                 adc::RingMessage::RingStop => {
                     log::info!("adc_rx :: {msg:?}");
                     ring_led.set_high()?;
+                    alert_tx.send(alert::AlertMessage::RingStop)?;
                 }
                 adc::RingMessage::Stats(s) => {
                     log::info!(
@@ -156,5 +160,6 @@ fn main() -> anyhow::Result<()> {
             }
             Err(e) => log::error!("ERROR :: adc_rx :: {e:?}"),
         }
+        watchdog.feed()?
     }
 }
