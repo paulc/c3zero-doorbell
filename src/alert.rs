@@ -24,8 +24,6 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
         crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
         ..Default::default()
     };
-    let mut client = HttpClient::wrap(EspHttpConnection::new(config)?);
-
     // Pushover API payload
     let url = "https://api.pushover.net/1/messages.json";
     let token = "amfa9dzeck8bongtab3nrta3xux3hj";
@@ -35,6 +33,8 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
     loop {
         match rx.recv() {
             Ok(_) => {
+                let mut client = HttpClient::wrap(EspHttpConnection::new(config)?);
+
                 let payload = PushoverMessage {
                     token,
                     user,

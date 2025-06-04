@@ -44,9 +44,7 @@ fn handle_reset(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> 
     response.write("Rebooting\n".as_bytes())?;
     std::thread::spawn(|| {
         esp_idf_hal::delay::FreeRtos::delay_ms(1000); // Give time for response to send
-        unsafe {
-            esp_idf_sys::esp_restart();
-        }
+        esp_idf_hal::reset::restart();
     });
     Ok(())
 }

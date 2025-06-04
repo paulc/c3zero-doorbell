@@ -8,6 +8,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+// use anyhow::Context;
+
 use doorbell::httpd;
 use doorbell::nvs;
 use doorbell::rgb;
@@ -97,24 +99,33 @@ fn main() -> anyhow::Result<()> {
     let (adc_tx, adc_rx) = mpsc::channel();
 
     // Need to expand stack size as we allocate ADC & FP buffers on stack
-    thread::Builder::new().stack_size(8192).spawn(move || {
-        adc::adc_task(
-            peripherals.timer00,
-            peripherals.adc1,
-            peripherals.pins.gpio4,
-            adc_tx,
-            false,
-        )
-    })?;
+    let adc_task = thread::Builder::new()
+        .stack_size(8192)
+        .spawn(move || {
+            adc::adc_task(
+                peripherals.timer00,
+                peripherals.adc1,
+                peripherals.pins.gpio4,
+                adc_tx,
+                false,
+            )
+        })
+        .expect("Error starting adc_task:");
 
     // Alert Channel
     let (alert_tx, alert_rx) = mpsc::channel();
 
-    thread::Builder::new()
+    let alert_task = thread::Builder::new()
         .stack_size(8192)
-        .spawn(move || alert::alert_task(alert_rx))?;
+        .spawn(move || alert::alert_task(alert_rx))
+        .expect("Error starting alert_task:");
 
     loop {
+        // Check tasks still running - restart if not
+        if adc_task.is_finished() || alert_task.is_finished() {
+            log::error!("Task Failed - Restarting");
+            esp_idf_hal::reset::restart();
+        }
         match adc_rx.recv_timeout(Duration::from_millis(500)) {
             Ok(msg) => match msg {
                 adc::RingMessage::RingStart => {
