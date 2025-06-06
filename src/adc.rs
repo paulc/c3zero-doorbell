@@ -3,6 +3,8 @@ use esp_idf_hal::timer::TimerDriver;
 use esp_idf_svc::hal::adc::{AdcContConfig, AdcContDriver, AdcMeasurement, Attenuated};
 use std::sync::mpsc;
 
+use crate::stats;
+
 pub const ADC_SAMPLE_RATE: u32 = 1000; // 1kHz sample rate
 pub const ADC_BUFFER_LEN: usize = 50; // 50ms sample buffer
 pub const ADC_MIN_THRESHOLD: f64 = 0.1; // If Hall-Effect sensor is on we should see Vcc/2
@@ -93,8 +95,8 @@ pub fn adc_task(
                 // When it's full process frame
                 if frame == ADC_BUFFER_LEN {
                     let elapsed = now - ticks;
-                    let (mean, stddev) = crate::stats::stats(&samples_f64);
-                    let (ring, threshold) = crate::stats::check_ring(mean, stddev, &mut prev);
+                    let (mean, stddev) = stats::stats(&samples_f64);
+                    let (ring, threshold) = stats::check_ring(mean, stddev, &mut prev);
 
                     if stats {
                         tx.send(RingMessage::Stats(Stats {

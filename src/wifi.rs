@@ -1,4 +1,5 @@
 use esp_idf_svc::hal::delay::FreeRtos;
+use esp_idf_svc::ipv4::IpInfo;
 use esp_idf_svc::wifi::{
     AccessPointConfiguration, AccessPointInfo, AuthMethod, Configuration, EspWifi,
 };
@@ -67,6 +68,7 @@ impl APStore {
 }
 
 pub static WIFI_SCAN: Mutex<Vec<AccessPointInfo>> = Mutex::new(Vec::new());
+pub static IP_INFO: Mutex<Option<IpInfo>> = Mutex::new(None);
 
 pub fn wifi_init(wifi: &mut EspWifi) -> anyhow::Result<()> {
     // Start WiFi initially with default config for scan
@@ -138,11 +140,12 @@ pub fn connect_wifi(
             }
         }
     }
-    log::info!(
-        "Connected:  {} {:?}",
-        config.ssid,
-        wifi.sta_netif().get_ip_info()?
-    );
+    let ip = wifi.sta_netif().get_ip_info()?;
+    let mut ip_info = IP_INFO.lock().unwrap();
+    *ip_info = Some(ip);
+
+    log::info!("Connected:  {} {:?}", config.ssid, ip_info);
+
     Ok(true)
 }
 
@@ -153,8 +156,8 @@ pub fn start_access_point(wifi: &mut EspWifi) -> anyhow::Result<()> {
         heapless::String::from_str("password").map_err(|_| anyhow::anyhow!("PW too long"))?;
 
     let ap_config = AccessPointConfiguration {
-        ssid,
-        password,
+        ssid: ssid.clone(),
+        password: password.clone(),
         channel: 1,
         auth_method: AuthMethod::WPA2Personal,
         ..Default::default()
@@ -163,7 +166,12 @@ pub fn start_access_point(wifi: &mut EspWifi) -> anyhow::Result<()> {
     wifi.set_configuration(&Configuration::AccessPoint(ap_config))?;
     wifi.start()?;
 
-    log::info!("Access Point started. Connect to ESP32C3-AP with password 'password'");
+    let ip = wifi.ap_netif().get_ip_info()?;
+    let mut ip_info = IP_INFO.lock().unwrap();
+    *ip_info = Some(ip);
+
+    log::info!("Access Point started: SSID={ssid} / Password={password}");
+    log::info!("IP: {ip:?}");
 
     Ok(())
 }

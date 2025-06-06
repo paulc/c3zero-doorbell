@@ -9,15 +9,13 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use doorbell::adc;
+use doorbell::alert;
 use doorbell::httpd;
 use doorbell::nvs;
 use doorbell::rgb;
 use doorbell::wifi;
 use doorbell::ws2812;
-
-mod adc;
-mod alert;
-mod stats;
 
 fn main() -> anyhow::Result<()> {
     esp_idf_hal::sys::link_patches();
@@ -49,7 +47,7 @@ fn main() -> anyhow::Result<()> {
     let mut ring_led = PinDriver::output(peripherals.pins.gpio6)?;
     ring_led.set_high()?;
 
-    // Initislise NVStore
+    // Initialise NVStore
     nvs::NVStore::init(nvs_default_partition.clone(), "DOORBELL")?;
 
     // Initialise WiFi
@@ -65,6 +63,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut wifi_config: Option<wifi::APConfig> = None;
 
+    // Try to connect to known APs
     for config in wifi::find_known_aps() {
         log::info!("Trying network: {}", config.ssid);
         match wifi::connect_wifi(&mut wifi, &config, 10000) {
@@ -74,10 +73,10 @@ fn main() -> anyhow::Result<()> {
                 break;
             }
             Ok(false) => {
-                log::info!("Failed to connect to Wifi: {}", config.ssid);
+                log::error!("Failed to connect to Wifi: {}", config.ssid);
             }
             Err(e) => {
-                log::info!("Wifi Error: {} [{}]", config.ssid, e);
+                log::error!("Wifi Error: {} [{}]", config.ssid, e);
             }
         }
     }
@@ -98,6 +97,7 @@ fn main() -> anyhow::Result<()> {
     // ADC Channel
     let (adc_tx, adc_rx) = mpsc::channel();
 
+    // Start ADC task
     // Need to expand stack size as we allocate ADC & FP buffers on stack
     let adc_task = thread::Builder::new()
         .stack_size(8192)
@@ -141,6 +141,7 @@ fn main() -> anyhow::Result<()> {
                     ring_led.set_high()?;
                     alert_tx.send(alert::AlertMessage::RingStop)?;
                 }
+                // We only get stats messages if enabled when starting adc_task
                 adc::RingMessage::Stats(s) => {
                     log::info!(
                         "[{}/{:06}] Mean: {:.4} :: Std Dev: {:.4}/{:.4} :: Ring: {}",

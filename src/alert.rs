@@ -44,13 +44,20 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
             ..Default::default()
         },
     )?;
-    mqtt_client.enqueue(MQTT_TOPIC, QoS::AtMostOnce, false, "OFF".as_bytes())?;
+
+    match mqtt_client.enqueue(MQTT_TOPIC, QoS::AtMostOnce, true, "OFF".as_bytes()) {
+        Ok(id) => log::info!("MQTT Send: id={id}"),
+        Err(e) => log::error!("MQTT Error; {e}"),
+    }
 
     loop {
         match rx.recv() {
             Ok(AlertMessage::RingStart) => {
                 // Send MQTT Update
-                mqtt_client.enqueue(MQTT_TOPIC, QoS::AtMostOnce, true, "ON".as_bytes())?;
+                match mqtt_client.enqueue(MQTT_TOPIC, QoS::AtMostOnce, true, "ON".as_bytes()) {
+                    Ok(id) => log::info!("MQTT Send: id={id}"),
+                    Err(e) => log::error!("MQTT Error; {e}"),
+                }
 
                 // Send Webhook
                 let mut client = HttpClient::wrap(EspHttpConnection::new(config)?);
@@ -84,7 +91,10 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
             }
             Ok(AlertMessage::RingStop) => {
                 // Send MQTT Update
-                mqtt_client.enqueue(MQTT_TOPIC, QoS::AtMostOnce, true, "OFF".as_bytes())?;
+                match mqtt_client.enqueue(MQTT_TOPIC, QoS::AtMostOnce, true, "OFF".as_bytes()) {
+                    Ok(id) => log::info!("MQTT Send: id={id}"),
+                    Err(e) => log::error!("MQTT Error; {e}"),
+                }
             }
             Err(e) => {
                 log::error!("ERROR :: alert_task :: {e:?}");

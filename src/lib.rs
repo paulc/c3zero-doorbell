@@ -1,5 +1,8 @@
+pub mod adc;
+pub mod alert;
 pub mod httpd;
 pub mod nvs;
 pub mod rgb;
+pub mod stats;
 pub mod wifi;
 pub mod ws2812;
