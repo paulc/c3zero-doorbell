@@ -31,7 +31,7 @@ fn main() -> anyhow::Result<()> {
     let mut status = [rgb::RED, rgb::GREEN, rgb::BLUE, rgb::OFF];
 
     loop {
-        log::info!(">> {:?}", status);
+        log::info!(">> {status:?}");
         quad.set(&status)?;
         rotate(&mut status);
         std::thread::sleep(Duration::from_millis(200));
