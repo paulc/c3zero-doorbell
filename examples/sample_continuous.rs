@@ -14,7 +14,7 @@ enum Mode {
 const ADC_BUFFER_LEN: usize = 100;
 // Min sample rate for continuous driver is 1kHz
 const ADC_SAMPLE_RATE: u32 = 1000;
-const MODE: Mode = Mode::Stats;
+const MODE: Mode = Mode::Samples;
 
 fn stats(buf: &[f64; ADC_BUFFER_LEN]) -> (f64, f64) {
     let mean = buf.iter().sum::<f64>() / ADC_BUFFER_LEN as f64;
@@ -102,7 +102,7 @@ fn main() -> Result<(), EspError> {
                             log::info!("{count} [{ticks}] : Mean = {mean:.3} / Std Dev = {sd:.3}",);
                         }
                         Mode::Samples => {
-                            log::info!(
+                            println!(
                                 "{}",
                                 samples_f64
                                     .iter()

@@ -19,6 +19,16 @@ use doorbell::rgb;
 use doorbell::wifi::{self, APConfig};
 use doorbell::ws2812;
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct MQTTConfig {
+    pub url: String,
+    pub client_id: String,
+    pub ring_topic: String,
+    pub status_topic: String,
+}
+
 fn main() -> anyhow::Result<()> {
     // It is necessary to call this function once. Otherwise some patches to the runtime
     // implemented by esp-idf-sys might not link properly. See https://github.com/esp-rs/esp-idf-template/issues/71
@@ -122,64 +132,81 @@ fn main() -> anyhow::Result<()> {
         })
         .expect("Error starting status_task:");
 
-    // MQTT Client
-    const MQTT_URL: &str = "mqtt://192.168.60.1:1883";
-    const MQTT_CLIENT_ID: &str = "esp32c3-alarm";
-    const MQTT_ALARM_STATUS: &str = "alarm/ip";
-    const MQTT_RING_SUBSCRIPTION: &str = "doorbell/ring";
-    let mut mqtt_client = EspMqttClient::new_cb(
-        MQTT_URL,
-        &MqttClientConfiguration {
-            client_id: Some(MQTT_CLIENT_ID),
-            ..Default::default()
-        },
-        move |e| {
-            let e = e.payload();
-            log::info!(">> MQTT Event: {e:?}");
-            if let EventPayload::Received {
-                topic: Some(MQTT_RING_SUBSCRIPTION),
-                details: Details::Complete,
-                data,
-                ..
-            } = e
-            {
-                let v = String::from_utf8_lossy(data);
-                match v.as_ref() {
-                    "ON" => status_tx.send(true).unwrap(),
-                    _ => status_tx.send(false).unwrap(),
-                }
-            }
-        },
-    )?;
-
-    let alarm_ip = if let Ok(Some(ip)) = wifi::IP_INFO.get_cloned() {
-        ip.ip.to_string()
-    } else {
-        "<Unknown IP>".to_string()
+    let mqtt_config = match NVStore::get::<MQTTConfig>("mqtt") {
+        Ok(Some(c)) => {
+            log::info!("MQTT Config: {c:?}");
+            Some(c)
+        }
+        Ok(None) => {
+            log::error!("No data");
+            None
+        }
+        Err(e) => {
+            log::error!("Error getting MQTT Config: {e}");
+            None
+        }
     };
 
-    match mqtt_client.enqueue(
-        MQTT_ALARM_STATUS,
-        QoS::AtMostOnce,
-        false,
-        alarm_ip.as_bytes(),
-    ) {
-        Ok(_id) => log::info!("MQTT Send: {alarm_ip}"),
-        Err(e) => log::error!("MQTT Error: {e}"),
-    }
+    match mqtt_config {
+        Some(c) => {
+            let sub_topic = c.ring_topic.clone();
+            let mut mqtt_client = EspMqttClient::new_cb(
+                &c.url,
+                &MqttClientConfiguration {
+                    client_id: Some(&c.client_id),
+                    ..Default::default()
+                },
+                move |e| {
+                    let e = e.payload();
+                    log::info!(">> MQTT Event: {e:?}");
+                    if let EventPayload::Received {
+                        topic: Some(topic),
+                        details: Details::Complete,
+                        data,
+                        ..
+                    } = e
+                    {
+                        if topic == sub_topic {
+                            let v = String::from_utf8_lossy(data);
+                            match v.as_ref() {
+                                "ON" => status_tx.send(true).unwrap(),
+                                _ => status_tx.send(false).unwrap(),
+                            }
+                        }
+                    }
+                },
+            )?;
+            let alarm_ip = if let Ok(Some(ip)) = wifi::IP_INFO.get_cloned() {
+                ip.ip.to_string()
+            } else {
+                "<Unknown IP>".to_string()
+            };
 
-    mqtt_client.subscribe(MQTT_RING_SUBSCRIPTION, QoS::AtMostOnce)?;
+            match mqtt_client.enqueue(&c.status_topic, QoS::AtMostOnce, false, alarm_ip.as_bytes())
+            {
+                Ok(_id) => log::info!("MQTT Send: {alarm_ip}"),
+                Err(e) => log::error!("MQTT Error: {e}"),
+            }
 
-    loop {
-        std::thread::sleep(Duration::from_secs(5));
-        match mqtt_client.enqueue(
-            MQTT_ALARM_STATUS,
-            QoS::AtMostOnce,
-            false,
-            alarm_ip.as_bytes(),
-        ) {
-            Ok(_id) => log::info!("MQTT Send: {alarm_ip}"),
-            Err(e) => log::error!("MQTT Error: {e}"),
+            mqtt_client.subscribe(&c.ring_topic, QoS::AtMostOnce)?;
+            loop {
+                std::thread::sleep(Duration::from_secs(5));
+                match mqtt_client.enqueue(
+                    &c.status_topic,
+                    QoS::AtMostOnce,
+                    false,
+                    alarm_ip.as_bytes(),
+                ) {
+                    Ok(_id) => log::info!("MQTT Send: {alarm_ip}"),
+                    Err(e) => log::error!("MQTT Error: {e}"),
+                }
+            }
+        }
+        None => {
+            log::error!("MQTT Configuration Not Found");
+            loop {
+                std::thread::sleep(Duration::from_secs(5));
+            }
         }
     }
 }

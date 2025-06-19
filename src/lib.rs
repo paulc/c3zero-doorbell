@@ -1,3 +1,5 @@
+#![feature(lock_value_accessors)]
+
 pub mod adc;
 pub mod alert;
 pub mod httpd;

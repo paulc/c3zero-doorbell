@@ -5,12 +5,15 @@ use esp_idf_svc::mqtt::client::{EspMqttClient, MqttClientConfiguration, QoS};
 
 use std::sync::mpsc;
 
+use crate::wifi;
+
 use serde::Serialize;
 
 #[derive(Debug)]
 pub enum AlertMessage {
     RingStart,
     RingStop,
+    StatusUpdate,
 }
 
 #[derive(Serialize, Debug)]
@@ -22,21 +25,11 @@ struct PushoverMessage<'a> {
 
 pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
     // HTTP Client
-    let config = &HttpConfiguration {
+    let http_config = &HttpConfiguration {
         crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
         ..Default::default()
     };
 
-    // Pushover API payload
-    let url = "https://api.pushover.net/1/messages.json";
-    let token = "amfa9dzeck8bongtab3nrta3xux3hj";
-    let user = "uomfetdtawqotwp3ii9jpf4buys3p4";
-    let message = "DOORBELL";
-
-    // MQTT Client
-    const MQTT_URL: &str = "mqtt://192.168.60.1:1883";
-    const MQTT_CLIENT_ID: &str = "Esp32c3-Doorbell";
-    const MQTT_TOPIC: &str = "doorbell/ring";
     let (mut mqtt_client, _) = EspMqttClient::new(
         MQTT_URL,
         &MqttClientConfiguration {
@@ -44,6 +37,8 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
             ..Default::default()
         },
     )?;
+
+    send_status(&mut mqtt_client);
 
     match mqtt_client.enqueue(MQTT_TOPIC, QoS::AtMostOnce, true, "OFF".as_bytes()) {
         Ok(id) => log::info!("MQTT Send: id={id}"),
@@ -58,36 +53,11 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
                     Ok(id) => log::info!("MQTT Send: id={id}"),
                     Err(e) => log::error!("MQTT Error; {e}"),
                 }
-
-                // Send Webhook
-                let mut client = HttpClient::wrap(EspHttpConnection::new(config)?);
-
-                let payload = PushoverMessage {
-                    token,
-                    user,
-                    message,
-                };
-                log::info!("Sending Pushover message: {payload:?}");
-
-                // Convert to JSON
-                let payload = serde_json::to_vec(&payload)?;
-
-                // Prepare headers and URL
-                let content_length_header = format!("{}", payload.len());
-                let headers = [
-                    ("content-type", "application/json"),
-                    ("content-length", content_length_header.as_str()),
-                    ("accept", "application/json"),
-                ];
-
-                let mut request = client.post(url, &headers)?;
-
-                request.write_all(&payload)?;
-                request.flush()?;
-                log::info!("-> POST {url}");
-
-                let response = request.submit()?;
-                log::info!("<- {}", response.status());
+                // Send Pushover  Webhook
+                match send_pushover(&http_config) {
+                    Ok(_) => {}
+                    Err(e) => log::error!("Error sending Pushover request: {e}"),
+                }
             }
             Ok(AlertMessage::RingStop) => {
                 // Send MQTT Update
@@ -96,9 +66,76 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
                     Err(e) => log::error!("MQTT Error; {e}"),
                 }
             }
+            Ok(AlertMessage::StatusUpdate) => {
+                send_status(&mut mqtt_client);
+            }
             Err(e) => {
                 log::error!("ERROR :: alert_task :: {e:?}");
             }
         }
     }
+}
+
+// MQTT Client
+const MQTT_URL: &str = "mqtt://192.168.60.1:1883";
+const MQTT_CLIENT_ID: &str = "Esp32c3-Doorbell";
+const MQTT_TOPIC: &str = "doorbell/ring";
+const MQTT_TOPIC_STATUS: &str = "doorbell/ip";
+
+fn send_status(mqtt: &mut EspMqttClient<'static>) {
+    let alarm_ip = if let Ok(Some(ip)) = wifi::IP_INFO.get_cloned() {
+        ip.ip.to_string()
+    } else {
+        "<Unknown IP>".to_string()
+    };
+
+    match mqtt.enqueue(
+        MQTT_TOPIC_STATUS,
+        QoS::AtMostOnce,
+        false,
+        alarm_ip.as_bytes(),
+    ) {
+        Ok(_id) => log::info!("MQTT Send: {alarm_ip}"),
+        Err(e) => log::error!("MQTT Error: {e}"),
+    }
+}
+
+const URL: &str = "https://api.pushover.net/1/messages.json";
+const TOKEN: &str = "amfa9dzeck8bongtab3nrta3xux3hj";
+const USER: &str = "uomfetdtawqotwp3ii9jpf4buys3p4";
+const MESSAGE: &str = "DOORBELL";
+
+fn send_pushover(config: &HttpConfiguration) -> anyhow::Result<()> {
+    let mut client = HttpClient::wrap(EspHttpConnection::new(config)?);
+
+    let payload = PushoverMessage {
+        token: TOKEN,
+        user: USER,
+        message: MESSAGE,
+    };
+    log::info!("Sending Pushover message: {payload:?}");
+
+    // Convert to JSON
+    let payload = serde_json::to_vec(&payload)?;
+
+    // Prepare headers and URL
+    let content_length_header = format!("{}", payload.len());
+    let headers = [
+        ("content-type", "application/json"),
+        ("content-length", content_length_header.as_str()),
+        ("accept", "application/json"),
+    ];
+
+    let mut request = client.post(URL, &headers)?;
+
+    request.write_all(&payload)?;
+    request.flush()?;
+    log::info!("HTTP Request -> POST {URL}");
+
+    match request.submit() {
+        Ok(response) => log::info!("HTTP Response <- {}", response.status()),
+        Err(e) => log::error!("HTTP Error: {e}"),
+    }
+
+    Ok(())
 }

@@ -31,7 +31,7 @@ fn main() -> anyhow::Result<()> {
 
     // Hardware Watchdog
     let twdt_config = TWDTConfig {
-        duration: Duration::from_secs(2),
+        duration: Duration::from_secs(5),
         panic_on_trigger: true,
         subscribed_idle_tasks: enumset::enum_set!(esp_idf_hal::cpu::Core::Core0),
     };
@@ -122,6 +122,7 @@ fn main() -> anyhow::Result<()> {
 
     // Dont configure watchdog until we have setup background tasks
     let mut watchdog = twdt_driver.watch_current_task()?;
+    let mut count = 0_usize;
 
     loop {
         // Check tasks still running - restart if not
@@ -129,7 +130,7 @@ fn main() -> anyhow::Result<()> {
             log::error!("Task Failed - Restarting");
             esp_idf_hal::reset::restart();
         }
-        match adc_rx.recv_timeout(Duration::from_millis(500)) {
+        match adc_rx.recv_timeout(Duration::from_millis(1000)) {
             Ok(msg) => match msg {
                 adc::RingMessage::RingStart => {
                     log::info!("adc_rx :: {msg:?}");
@@ -154,13 +155,19 @@ fn main() -> anyhow::Result<()> {
                     );
                 }
             },
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                log::info!("adc_rx :: tick");
-                status.set(rgb::BLUE)?;
-                status.set(rgb::OFF)?;
-            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(e) => log::error!("ERROR :: adc_rx :: {e:?}"),
         }
+        count += 1;
+        if count % 60 == 0 {
+            // Update status every 60 secs
+            log::info!("adc_rx :: tick");
+            status.set(rgb::BLUE)?;
+            status.set(rgb::OFF)?;
+            alert_tx.send(alert::AlertMessage::StatusUpdate)?;
+        }
+
+        // Update watchdog
         watchdog.feed()?
     }
 }
