@@ -54,7 +54,7 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
                     Err(e) => log::error!("MQTT Error; {e}"),
                 }
                 // Send Pushover  Webhook
-                match send_pushover(&http_config) {
+                match send_pushover(http_config) {
                     Ok(_) => {}
                     Err(e) => log::error!("Error sending Pushover request: {e}"),
                 }

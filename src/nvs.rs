@@ -66,7 +66,7 @@ impl NVStore {
             .ok_or(anyhow::anyhow!("NV_STORE not initialized"))?;
 
         // Check body is valid JSON
-        serde_json::from_slice::<serde_json::Value>(&value)?;
+        serde_json::from_slice::<serde_json::Value>(value)?;
 
         nvs.set_raw(key, value)
             .map_err(|e| anyhow::anyhow!("Error updating key {key}: [{}]", e))?;
@@ -79,7 +79,7 @@ impl NVStore {
             .as_mut()
             .ok_or(anyhow::anyhow!("NV_STORE not initialized"))?;
 
-        nvs.remove(&key)
+        nvs.remove(key)
             .map_err(|e| anyhow::anyhow!("Error updating key {key}: [{}]", e))?;
         Ok(())
     }
