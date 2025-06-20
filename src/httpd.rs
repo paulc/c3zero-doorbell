@@ -133,16 +133,13 @@ fn handle_nvs_set(mut request: Request<&mut EspHttpConnection>) -> anyhow::Resul
     log::info!("NVS_SET: {key}: {}", String::from_utf8_lossy(&buf));
 
     match request.header("Content-Type") {
-        Some("application/json") => {
-            // Check body is valid JSON
-            match NVStore::set_raw(&key, &buf[0..len]) {
-                Ok(_) => request.into_ok_response(),
-                Err(e) => {
-                    log::error!("NVS_SET: {e}");
-                    request.into_response(400, Some(&e.to_string()), &[])
-                }
+        Some("application/json") => match NVStore::set_raw(&key, &buf[0..len]) {
+            Ok(_) => request.into_ok_response(),
+            Err(e) => {
+                log::error!("NVS_SET: {e}");
+                request.into_response(400, Some(&e.to_string()), &[])
             }
-        }
+        },
         _ => request.into_response(400, Some("Invalid Content-Type"), &[]),
     }
     .map(|_| ())

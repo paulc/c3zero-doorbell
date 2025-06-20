@@ -2,6 +2,7 @@
 
 pub mod adc;
 pub mod alert;
+pub mod button;
 pub mod httpd;
 pub mod nvs;
 pub mod rgb;

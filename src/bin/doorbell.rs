@@ -31,7 +31,7 @@ fn main() -> anyhow::Result<()> {
 
     // Hardware Watchdog
     let twdt_config = TWDTConfig {
-        duration: Duration::from_secs(5),
+        duration: Duration::from_secs(2),
         panic_on_trigger: true,
         subscribed_idle_tasks: enumset::enum_set!(esp_idf_hal::cpu::Core::Core0),
     };
