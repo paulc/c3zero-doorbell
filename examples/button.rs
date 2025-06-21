@@ -34,9 +34,13 @@ fn main() -> anyhow::Result<()> {
     // Spawn button task
     let button_pin = peripherals.pins.gpio21.downgrade();
     let (button_tx, button_rx) = mpsc::channel();
-    let _t = thread::spawn(move || button::button_task(button_pin, button_tx, None));
+    let _t = thread::spawn(move || {
+        button::button_task(button_pin, button_tx, Some(Duration::from_secs(2)))
+    });
 
-    let mut status = [rgb::RED, rgb::GREEN, rgb::BLUE, rgb::OFF];
+    let mut status = [rgb::OFF; 4];
+    quad.set(&status)?;
+    status = [rgb::RED, rgb::GREEN, rgb::BLUE, rgb::OFF];
 
     loop {
         if let Ok(msg) = button_rx.recv_timeout(Duration::from_secs(2)) {
