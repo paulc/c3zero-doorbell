@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct MQTTConfig {
+    pub enabled: bool,
     pub url: String,
     pub client_id: String,
     pub ring_topic: String,
@@ -149,48 +150,40 @@ fn main() -> anyhow::Result<()> {
 
     match mqtt_config {
         Some(c) => {
-            let sub_topic = c.ring_topic.clone();
-            let mut mqtt_client = EspMqttClient::new_cb(
-                &c.url,
-                &MqttClientConfiguration {
-                    client_id: Some(&c.client_id),
-                    ..Default::default()
-                },
-                move |e| {
-                    let e = e.payload();
-                    log::info!(">> MQTT Event: {e:?}");
-                    if let EventPayload::Received {
-                        topic: Some(topic),
-                        details: Details::Complete,
-                        data,
-                        ..
-                    } = e
-                    {
-                        if topic == sub_topic {
-                            let v = String::from_utf8_lossy(data);
-                            match v.as_ref() {
-                                "ON" => status_tx.send(true).unwrap(),
-                                _ => status_tx.send(false).unwrap(),
+            if c.enabled {
+                let sub_topic = c.ring_topic.clone();
+                let mut mqtt_client = EspMqttClient::new_cb(
+                    &c.url,
+                    &MqttClientConfiguration {
+                        client_id: Some(&c.client_id),
+                        ..Default::default()
+                    },
+                    move |e| {
+                        let e = e.payload();
+                        log::info!(">> MQTT Event: {e:?}");
+                        if let EventPayload::Received {
+                            topic: Some(topic),
+                            details: Details::Complete,
+                            data,
+                            ..
+                        } = e
+                        {
+                            if topic == sub_topic {
+                                let v = String::from_utf8_lossy(data);
+                                match v.as_ref() {
+                                    "ON" => status_tx.send(true).unwrap(),
+                                    _ => status_tx.send(false).unwrap(),
+                                }
                             }
                         }
-                    }
-                },
-            )?;
-            let alarm_ip = if let Ok(Some(ip)) = wifi::IP_INFO.get_cloned() {
-                ip.ip.to_string()
-            } else {
-                "<Unknown IP>".to_string()
-            };
+                    },
+                )?;
+                let alarm_ip = if let Ok(Some(ip)) = wifi::IP_INFO.get_cloned() {
+                    ip.ip.to_string()
+                } else {
+                    "<Unknown IP>".to_string()
+                };
 
-            match mqtt_client.enqueue(&c.status_topic, QoS::AtMostOnce, false, alarm_ip.as_bytes())
-            {
-                Ok(_id) => log::info!("MQTT Send: {alarm_ip}"),
-                Err(e) => log::error!("MQTT Error: {e}"),
-            }
-
-            mqtt_client.subscribe(&c.ring_topic, QoS::AtMostOnce)?;
-            loop {
-                std::thread::sleep(Duration::from_secs(5));
                 match mqtt_client.enqueue(
                     &c.status_topic,
                     QoS::AtMostOnce,
@@ -199,6 +192,25 @@ fn main() -> anyhow::Result<()> {
                 ) {
                     Ok(_id) => log::info!("MQTT Send: {alarm_ip}"),
                     Err(e) => log::error!("MQTT Error: {e}"),
+                }
+
+                mqtt_client.subscribe(&c.ring_topic, QoS::AtMostOnce)?;
+                loop {
+                    std::thread::sleep(Duration::from_secs(5));
+                    match mqtt_client.enqueue(
+                        &c.status_topic,
+                        QoS::AtMostOnce,
+                        false,
+                        alarm_ip.as_bytes(),
+                    ) {
+                        Ok(_id) => log::info!("MQTT Send: {alarm_ip}"),
+                        Err(e) => log::error!("MQTT Error: {e}"),
+                    }
+                }
+            } else {
+                log::error!("MQTT Not Enabled");
+                loop {
+                    std::thread::sleep(Duration::from_secs(5));
                 }
             }
         }
