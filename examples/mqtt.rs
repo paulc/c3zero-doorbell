@@ -41,7 +41,6 @@ struct MQTTConfig {
 struct HomePage<'a> {
     title: &'a str,
     ip: &'a str,
-    links: Vec<(&'a str, &'a str)>,
 }
 
 #[derive(askama::Template)]
@@ -63,12 +62,6 @@ fn handle_home(
     let home_page = HomePage {
         title: "MQTT Alarm",
         ip: alarm_ip,
-        links: vec![
-            ("Say Hello", "/hello"),
-            ("WiFi Config", "/wifi"),
-            ("MQTT Config", "/mqtt"),
-            ("Reset Device", "/reset"),
-        ],
     };
     let mut response = request.into_ok_response()?;
     let html = home_page.render()?;
