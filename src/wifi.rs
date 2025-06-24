@@ -11,6 +11,9 @@ use std::sync::Mutex;
 
 use crate::nvs::NVStore;
 
+pub static WIFI_SCAN: Mutex<Vec<AccessPointInfo>> = Mutex::new(Vec::new());
+pub static IP_INFO: Mutex<Option<IpInfo>> = Mutex::new(None);
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct APConfig {
     pub ssid: String<32>,
@@ -66,9 +69,6 @@ impl APStore {
         Ok(())
     }
 }
-
-pub static WIFI_SCAN: Mutex<Vec<AccessPointInfo>> = Mutex::new(Vec::new());
-pub static IP_INFO: Mutex<Option<IpInfo>> = Mutex::new(None);
 
 pub fn wifi_init(wifi: &mut EspWifi) -> anyhow::Result<()> {
     // Start WiFi initially with default config for scan

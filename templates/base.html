@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}TITLE{% endblock %}</title>
+    <link rel="stylesheet" href="style.css">
+    <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', () => {
+            // Navbar
+            document.getElementById('mobileMenuBtn').addEventListener('click', function() {
+                const navLinks = document.getElementById('navbarLinks');
+                navLinks.classList.toggle('active');
+                // Toggle hamburger icon
+                this.innerHTML = navLinks.classList.contains('active') ? '✕' : '☰';
+            });
+
+            // Set active link based on current page
+            const currentPath = window.location.pathname;
+            const navLinks = document.querySelectorAll('.nav-link');
+
+            navLinks.forEach(link => {
+                if (link.getAttribute('href') === currentPath) {
+                    link.classList.add('active');
+                } else {
+                    link.classList.remove('active');
+                }
+            });
+
+            // Flash Message
+            const getCookieJSON = name => JSON.parse(decodeURIComponent(document.cookie
+                                                          .split('; ')
+                                                          .find(c => c.startsWith(`${name}=`))
+                                                          ?.split('=')[1] ?? 'null'));
+            const deleteCookie = (name) => document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+
+            const flash = {
+                element: document.getElementById('flash-message'),
+                closeBtn: document.querySelector('.flash-close'),
+
+                show: function(message, type = 'success') {
+                    document.body.classList.add('flash-visible');
+                    this.element.className = `flash-message visible ${type}`;
+                    this.element.querySelector('.flash-content').textContent = message;
+                },
+
+                hide: function() {
+                    document.body.classList.remove('flash-visible');
+                    this.element.classList.remove('visible');
+                },
+
+                init: function() {
+                    this.closeBtn.addEventListener('click', () => this.hide());
+                }
+            };
+
+            flash.init();
+
+            const msg = getCookieJSON('flash_msg');
+            if (msg) {
+                flash.show(msg.message,msg.level);
+                deleteCookie('flash_msg');
+            }
+
+            // Make functions available from console
+            globalThis.flash = flash;
+            globalThis.getCookieJSON = getCookieJSON;
+            globalThis.deleteCookie = deleteCookie;
+        });
+    </script>
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+
+    <div id="flash-message" class="flash-message">
+        <div class="flash-content"></div>
+        <button class="flash-close" aria-label="Close">&times;</button>
+    </div>
+
+    {% include "navbar.html" %}
+
+    {% block body %}<h1>Body</h1>{% endblock %}
+  </body>
+</html>

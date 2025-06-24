@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block body %}
+<h1>{{ title }}</h1>
+    <div class="container">
+        <div class="ip-address">
+            <h3>IP Address:</h3>
+            <span>{{ ip }}</span>
+        </div>
+    </div>
+{% endblock %}
+
+{% block head %}
+    <style>
+        .ip-address { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+        .ip-address h3 { margin: 0; } 
+        .button-row { display: flex; gap: 10px; justify-content: space-between; }
+    </style>
+{% endblock %}

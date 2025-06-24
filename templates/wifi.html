@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}WiFi Configuration{% endblock %}
+
+{% block head %}
+{% endblock %}
+
+{% block body %}
+        <h1>Wi-Fi Configuration</h1>
+        <div class="container">
+            <!-- List of Known APs -->
+            <h3>Visible APs</h3>
+            <table class="rounded">
+                <thead>
+                    <tr>
+                        <th style="width: 50%">SSID</th>
+                        <th style="width: 15%">Channel</th>
+                        <th style="width: 15%">Signal Strength</th>
+                        <th style="width: 20%">Auth Method</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ap in visible %}
+                    <tr>
+                        <td>{{ ap.0 }}</td>
+                        <td>{{ ap.1 }}</td>
+                        <td>{{ ap.2 }}</td>
+                        <td>{{ ap.3 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <h3>Known APs</h3>
+            <table class="rounded">
+                <thead>
+                    <tr>
+                        <th style="width: 80%">SSID</th>
+                        <th style="width: 20%">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ap in aps %}
+                    <tr>
+                        <td>{{ ap }}</td>
+                        <td>
+                            <a
+                                href="/wifi/delete/{{ ap }}"
+                                class="button delete"
+                                >Delete</a
+                            >
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <!-- Add New AP Form -->
+            <div class="form-container" style="max-width: 800px">
+                <h2>Add AP</h2>
+                <form
+                    action="/wifi/add"
+                    method="post"
+                    style="display: flex; align-items: center; gap: 10px"
+                >
+                    <div
+                        style="
+                            display: flex;
+                            align-items: center;
+                            gap: 10px;
+                            flex: 1;
+                        "
+                    >
+                        <label for="ssid">SSID:</label>
+                        <input
+                            type="text"
+                            id="ssid"
+                            name="ssid"
+                            required
+                            style="flex: 1"
+                        />
+                    </div>
+                    <div
+                        style="
+                            display: flex;
+                            align-items: center;
+                            gap: 10px;
+                            flex: 1;
+                        "
+                    >
+                        <label for="password">Password:</label>
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            required
+                            style="flex: 1"
+                        />
+                    </div>
+                    <button class="button" type="submit" style="flex: 0 0 auto">
+                        Add
+                    </button>
+                </form>
+            </div>
+        </div>
+{% endblock %}
+

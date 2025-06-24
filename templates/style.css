@@ -1,0 +1,428 @@
+:root {
+    --theme: #4caf50; /* Define theme colour */
+    --nav-bg: #333;
+    --nav-text: white;
+    --nav-hover: #555;
+    --nav-active: var(--theme);
+    --font-size: 14px
+}
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f9;
+    margin: 0;
+    padding: 20px;
+    color: #333;
+    transition: padding-top 0.3s ease;
+}
+h1 {
+    color: var(--theme);
+    text-align: center;
+    font-size: 24px;
+}
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: var(--font-size);
+}
+table.rounded {
+    border-radius: 8px; /* Add rounded corners */
+    overflow: hidden; /* Ensure the corners are rounded properly */
+    border: 1px;
+}
+table,
+th,
+td {
+    border: 1px solid #ddd;
+}
+th,
+td {
+    padding: 12px;
+    text-align: left;
+}
+th {
+    background-color: var(--theme);
+    color: white;
+}
+tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+tr:hover {
+    background-color: #ddd;
+}
+.form-container {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    max-width: 400px;
+    margin: 20px auto;
+}
+.form-container h2 {
+    margin-top: 0;
+    font-size: 18px;
+}
+.form-group {
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+}
+.form-group label {
+    width: 100px;
+    margin-right: 10px;
+    font-size: var(--font-size);
+    font-weight: bold;
+}
+.form-container input[type="text"],
+.form-container input[type="password"],
+.form-container textarea,
+.form-container select {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: var(--font-size); 
+    font-family: Arial, sans-serif;
+    background-color: white;
+}
+.form-container select {
+    flex: initial;
+    width: 200px;
+}
+.form-container textarea {
+    min-height: 80px; /* Default height */
+    resize: vertical; /* Allows only vertical resizing */
+}
+.form-container input[type="submit"] {
+    width: 100%;
+    background-color: var(--theme);
+    color: white;
+    padding: 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: var(--font-size);
+}
+.form-container input[type="checkbox"] {
+    accent-color: var(--theme); 
+}
+.button {
+    background-color: var(--theme);
+    color: white;
+    padding: 8px 12px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    border-radius: 4px;
+    margin: 4px 4px;
+    cursor: pointer;
+    font-size: var(--font-size);
+    border: none;
+    position: relative;
+    /* 3D effect */
+    box-shadow: 0 4px 4px rgba(0,0,0,0.2); /* Soft ambient shadow */
+    transition: all 0.2s ease;
+}
+.button:active {
+    transform: translateY(2px);
+}
+.button:not(:active):hover {
+    transform: translateY(-0.5px);
+}
+.button.danger {
+    background-color: #f44336;
+}
+
+/* List styles */
+ul, ol {
+    margin: 16px 0;
+    padding-left: 32px; /* Proper indentation for bullets/numbers */
+    line-height: 1.5;
+}
+ul {
+    list-style-type: disc; /* Default bullet style */
+}
+ul li {
+    padding: 4px 0; /* Vertical spacing only */
+    margin-bottom: 4px;
+}
+ol {
+    list-style-type: decimal; /* Default number style */
+}
+ol li {
+    padding: 4px 0;
+    margin-bottom: 4px;
+}
+/* Colorful bullet variant */
+ul.colored-bullets {
+    list-style-type: none;
+    padding-left: 24px;
+}
+ul.colored-bullets li::before {
+    content: "•";
+    color: var(--theme); /* Your theme green */
+    font-weight: bold;
+    display: inline-block;
+    width: 1em;
+    margin-left: -1em;
+}
+/* Nested list styling */
+li ul, li ol {
+    margin-top: 6px;
+    margin-bottom: 6px;
+}
+
+
+/* Checkbox Container - matches form-group layout */
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+/* Group Label - matches other form labels exactly */
+.checkbox-label {
+    width: 100px;
+    margin-right: 10px;
+    font-size: var(--font-size);
+    color: #333;
+}
+
+/* Horizontal Checkbox Items */
+.checkbox-items {
+    display: flex;
+    gap: 20px; /* Space between checkbox options */
+    align-items: center;
+}
+
+/* Individual Checkbox Item */
+.checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 6px; /* Space between checkbox and its label */
+}
+
+/* Native Checkbox - slightly enhanced */
+.checkbox-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--theme); 
+}
+
+/* Checkbox Label */
+.checkbox-item label {
+    font-size: var(--font-size);
+    color: #333;
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Radio Container - matches form layout */
+.radio-container {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+/* Group Label - matches other form labels */
+.radio-label {
+    width: 80px;
+    margin-right: 10px;
+    font-size: var(--font-size);
+    color: #333;
+    flex-shrink: 0;
+}
+
+/* Horizontal Radio Items */
+.radio-items {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+/* Native Radio Buttons with proper spacing */
+.radio-items input[type="radio"] {
+    width: var(--font-size);
+    height: var(--font-size);
+    margin: 0 4px 0 0; /* Right margin only */
+    accent-color: var(--theme);
+    flex-shrink: 0;
+}
+
+/* Radio Labels - proper inline alignment */
+.radio-items label {
+    display: inline-flex;
+    align-items: center;
+    font-size: var(--font-size);
+    color: #333;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+/* Flash Message Container */
+.flash-message {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 15px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 1000;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    color: white;
+    font-family: Arial, sans-serif;
+    transform: translateY(-100%);
+    transition: transform 0.3s ease;
+}
+
+/* New class for body when flash is visible */
+body.flash-visible {
+    padding-top: 60px; /* Adjust based on your flash message height */
+}
+
+/* Visible state */
+.flash-message.visible {
+    transform: translateY(0);
+}
+
+/* Color Variants */
+.flash-message.success {
+    background-color: var(--theme);
+}
+.flash-message.info {
+    background-color: #2196F3; /* Blue */
+}
+.flash-message.error {
+    background-color: #f44336; /* Red */
+}
+
+/* Close Button */
+.flash-close {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 0 0 20px;
+    margin-left: 10px;
+}
+
+/* Message Content */
+.flash-content {
+    flex-grow: 1;
+    text-align: center;
+    font-size: var(--font-size);
+}
+
+/* Navbar container */
+.navbar {
+    background-color: var(--nav-bg);
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+    position: relative;
+}
+
+/* Logo/home link */
+.navbar-brand {
+    color: var(--nav-text);
+    font-size: 1.5rem;
+    font-weight: bold;
+    text-decoration: none;
+    padding: 14px 16px;
+}
+
+/* Nav links container */
+.navbar-links {
+    display: flex;
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* Individual nav links */
+.nav-item {
+    float: left;
+}
+
+.nav-link {
+    display: block;
+    color: var(--nav-text);
+    text-align: center;
+    padding: 14px 16px;
+    text-decoration: none;
+    transition: background-color 0.3s;
+}
+
+/* Hover effect */
+.nav-link:hover {
+    background-color: var(--nav-hover);
+}
+
+/* Active page highlight */
+.nav-link.active {
+    background-color: var(--nav-active);
+    font-weight: bold;
+}
+
+/* Mobile menu button (hidden by default) */
+.mobile-menu-btn {
+    display: none;
+    background-color: var(--nav-bg);
+    color: white;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+}
+
+/* Responsive design */
+@media screen and (max-width: 768px) {
+
+    .navbar-links {
+        display: none;
+        flex-direction: column;
+        width: 100%;
+        position: fixed;
+        top: 56px; /* Height of navbar */
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--nav-bg);
+        z-index: 999;
+        overflow-y: auto;
+        padding-top: 20px;
+    }
+
+    .navbar-links.active {
+        display: flex;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .nav-item {
+        width: 100%;
+        text-align: center;
+    }
+
+    .mobile-menu-btn {
+        display: block;
+    }
+}
+
+body.menu-open {
+    overflow: hidden;
+}
+
