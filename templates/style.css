@@ -395,7 +395,8 @@ body.flash-visible {
     .navbar-links {
         display: none;
         flex-direction: column;
-        width: 100%;
+        width: calc(100% - 40px); /* Subtract left+right padding */
+        margin-left: 20px; 
         position: fixed;
         top: 56px; /* Height of navbar */
         left: 0;
@@ -405,11 +406,11 @@ body.flash-visible {
         z-index: 999;
         overflow-y: auto;
         padding-top: 20px;
+
     }
 
     .navbar-links.active {
         display: flex;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
 
     .nav-item {
@@ -419,6 +420,8 @@ body.flash-visible {
 
     .mobile-menu-btn {
         display: block;
+        z-index: 1000;
+        position: relative;
     }
 }
 
