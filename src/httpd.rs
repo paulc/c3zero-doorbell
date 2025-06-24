@@ -23,6 +23,10 @@ struct WiFiConfig<'a> {
     aps: Vec<&'a str>,
 }
 
+#[derive(askama::Template)]
+#[template(path = "reset_page.html")]
+struct ResetPage {}
+
 pub fn start_http_server<'a>() -> anyhow::Result<EspHttpServer<'a>> {
     log::info!("Starting HTTPD:");
     let config: HttpConfig = HttpConfig {
@@ -33,6 +37,7 @@ pub fn start_http_server<'a>() -> anyhow::Result<EspHttpServer<'a>> {
 
     server.fn_handler("/style.css", http::Method::Get, handle_style)?;
     server.fn_handler("/reset", http::Method::Get, handle_reset)?;
+    server.fn_handler("/reset_page", http::Method::Get, handle_reset_page)?;
     server.fn_handler("/hello", http::Method::Get, handle_hello)?;
     server.fn_handler("/wifi", http::Method::Get, handle_wifi)?;
     server.fn_handler("/wifi/delete/*", http::Method::Get, handle_ap_delete)?;
@@ -67,6 +72,14 @@ fn handle_reset(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> 
         esp_idf_hal::reset::restart();
     });
     Ok(())
+}
+
+fn handle_reset_page(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
+    let reset_page = ResetPage {};
+    let mut response = request.into_ok_response()?;
+    let html = reset_page.render()?;
+    response.write(html.as_bytes())?;
+    Ok::<(), anyhow::Error>(())
 }
 
 fn handle_wifi(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {

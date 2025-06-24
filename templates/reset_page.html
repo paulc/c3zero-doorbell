@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Reset Device{% endblock %}
+
+{% block body %}
+    <div class="container">
+      <h2>Reboot Device</h2>
+      <button class="button danger" id="rebootButton">Reboot Device</button>
+      <p id="status">Status: Ready</p>
+    </div>
+
+    <script>
+    const rebootButton = document.getElementById('rebootButton');
+    const statusDisplay = document.getElementById('status');
+
+    // Your async function (modified for UI updates)
+    async function rebootAndPollDevice(rebootUrl, checkUrl, interval = 5000, timeout = 60000) {
+      const startTime = Date.now();
+      let isDeviceUp = false;
+
+      statusDisplay.textContent = "Status: Sending reboot request...";
+
+      try {
+        // Step 1: Send reboot request
+        const rebootResponse = await fetch(rebootUrl, { method: 'GET' });
+        console.log("Rebooting:", rebootResponse);
+
+        if (!rebootResponse.ok) {
+          throw new Error(`Reboot failed (HTTP ${rebootResponse.status})`);
+        }
+
+        statusDisplay.textContent = "Status: Reboot command sent. Waiting for device...";
+
+        // Step 2: Poll until device is back or timeout
+
+        // Wait before polling 
+        await new Promise(resolve => setTimeout(resolve, interval));
+
+        while (Date.now() - startTime < timeout) {
+          try {
+            const checkResponse = await fetch(checkUrl, { method: 'GET' });
+            console.log("Polling:", checkResponse);
+
+            if (checkResponse.ok) {
+              isDeviceUp = true;
+              statusDisplay.textContent = "Status: Device is back online!";
+              break;
+            }
+          } catch (error) {
+            statusDisplay.textContent = "Status: Device offline (checking...)";
+          }
+
+          // Wait before polling again
+          await new Promise(resolve => setTimeout(resolve, interval));
+        }
+
+        if (!isDeviceUp) {
+          throw new Error("Timeout: Device did not come back online.");
+        }
+      } catch (error) {
+        statusDisplay.textContent = `Error: ${error.message}`;
+      }
+    }
+
+    // Attach the function to the button click
+    rebootButton.addEventListener('click', () => {
+      const REBOOT_URL = "/reset"; 
+      const CHECK_URL = "/hello"; 
+
+      rebootAndPollDevice(REBOOT_URL, CHECK_URL);
+    });
+  </script>
+{% endblock %}
+
+{% block head %}
+{% endblock %}
