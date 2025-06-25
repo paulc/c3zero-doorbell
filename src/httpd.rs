@@ -27,6 +27,8 @@ struct WiFiConfig<'a> {
 #[template(path = "reset_page.html")]
 struct ResetPage {}
 
+const REBOOT_DELAY_MS: u32 = 1000;
+
 pub fn start_http_server<'a>() -> anyhow::Result<EspHttpServer<'a>> {
     log::info!("Starting HTTPD:");
     let config: HttpConfig = HttpConfig {
@@ -68,7 +70,9 @@ fn handle_reset(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> 
     let mut response = request.into_ok_response()?;
     response.write("Rebooting\n".as_bytes())?;
     std::thread::spawn(|| {
+        log::info!("Rebooting in {REBOOT_DELAY_MS}ms");
         esp_idf_hal::delay::FreeRtos::delay_ms(1000); // Give time for response to send
+        log::info!("Rebooting now");
         esp_idf_hal::reset::restart();
     });
     Ok(())
