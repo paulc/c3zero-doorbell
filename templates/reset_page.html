@@ -3,18 +3,21 @@
 {% block title %}Reset Device{% endblock %}
 
 {% block body %}
-    <div class="container">
+    <div class="form-container">
       <h2>Reboot Device</h2>
+      <button class="button" id="checkButton">Check Device</button>
       <button class="button danger" id="rebootButton">Reboot Device</button>
-      <p id="status">Status: Ready</p>
+      <p id="status">Status: </p>
     </div>
 
     <script>
+        const reboot_url = "/reset"; 
+        const check_url = "/hello"; 
+
         const rebootButton = document.getElementById('rebootButton');
         const statusDisplay = document.getElementById('status');
 
-        // Your async function (modified for UI updates)
-        async function rebootAndPollDevice(rebootUrl, checkUrl, interval = 1000, timeout = 60000) {
+        async function rebootAndPollDevice(reboot_url, check_url, interval = 1000, timeout = 60000) {
           const startTime = Date.now();
           let isDeviceUp = false;
 
@@ -22,9 +25,8 @@
 
           try {
             // Step 1: Send reboot request
-            const rebootResponse = await fetch(rebootUrl, { method: 'GET' });
+            const rebootResponse = await fetch(reboot_url, { method: 'GET' });
             console.log("Rebooting:", rebootResponse);
-
             if (!rebootResponse.ok) {
               throw new Error(`Reboot failed (HTTP ${rebootResponse.status})`);
             }
@@ -35,24 +37,28 @@
 
             // Wait interval before starting to poll
             await new Promise(resolve => setTimeout(resolve, interval));
+
             let count = 0;
-
             while (Date.now() - startTime < timeout) {
-                try {
-                    // 1sec timeout on poll
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 1000); // 1 seconds timeout
-                    const checkResponse = await fetch(checkUrl, { method: 'GET', signal: controller.signal });
-                    console.log("Polling:", checkResponse);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 500); // 500ms timeout
 
-                    if (checkResponse.ok) {
-                      isDeviceUp = true;
-                      statusDisplay.textContent = "Status: Device online";
-                      break;
-                    }
-                    count++;
-                } catch (error) {
-                    statusDisplay.textContent = `Status: Device offline (${count})`;
+                fetch(check_url, { signal: controller.signal })
+                    .then((r) => {
+                        if (r.ok) {
+                            isDeviceUp = true;
+                            r.text().then((msg) => statusDisplay.textContent = `Status: Device Online [${msg}]`);
+                        }
+                    })
+                    .catch((e) => {
+                        count++;
+                    });
+
+                if (isDeviceUp) {
+                    break;
+                } else {
+                    statusDisplay.textContent = `Status: Reboot command sent. Waiting for device... ${count}`;
+                    await new Promise(resolve => setTimeout(resolve, interval));
                 }
             }
             if (!isDeviceUp) {
@@ -63,14 +69,26 @@
           }
         }
 
-        // Attach the function to the button click
         rebootButton.addEventListener('click', () => {
-          const REBOOT_URL = "/reset"; 
-          const CHECK_URL = "/hello"; 
-
-          rebootAndPollDevice(REBOOT_URL, CHECK_URL);
+            rebootAndPollDevice(reboot_url, check_url);
         });
 
+        checkButton.addEventListener('click', () => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 500); 
+            fetch(check_url, { signal: controller.signal })
+                .then((r) => {
+                    if (r.ok) {
+                        r.text().then((msg) => statusDisplay.textContent = `Status: [${r.status} ${r.statusText}] ${msg}`);
+                    } else {
+                        statusDisplay.textContent = `Status: [${r.status} ${r.statusText}]`;
+                    }
+                })
+                .catch((e) => {
+                    statusDisplay.textContent = `Status: Fetch Error: ${e}`;
+                });
+        });
+    </script>
     </script>
 {% endblock %}
 

@@ -16,6 +16,15 @@ pub struct FlashMsg<'a> {
     pub message: &'a str,
 }
 
+impl<'a> FlashMsg<'a> {
+    pub fn cookie(level: &'a str, message: &'a str) -> anyhow::Result<String> {
+        Ok(format!(
+            "flash_msg={}; path=/",
+            serde_json::to_string(&FlashMsg { level, message })?
+        ))
+    }
+}
+
 #[derive(askama::Template)]
 #[template(path = "wifi.html")]
 struct WiFiConfig<'a> {
@@ -54,20 +63,41 @@ pub fn start_http_server<'a>() -> anyhow::Result<EspHttpServer<'a>> {
 }
 
 fn handle_style(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
-    let mut response = request.into_response(200, Some("OK"), &[("Content-Type", "text/css")])?;
+    let mut response = request.into_response(
+        200,
+        Some("OK"),
+        &[
+            ("Content-Type", "text/css"),
+            ("Cache-Control", "max-age=600"),
+        ],
+    )?;
     let css = std::include_bytes!("../templates/style.css");
     response.write(css)?;
     Ok(())
 }
 
 fn handle_hello(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
-    let mut response = request.into_ok_response()?;
+    let mut response = request.into_response(
+        200,
+        Some("OK"),
+        &[
+            ("Content-Type", "text/css"),
+            ("Access-Control-Allow-Origin", "*"),
+        ],
+    )?;
     response.write("Hello from ESP32-C3!\n".as_bytes())?;
     Ok(())
 }
 
 fn handle_reset(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
-    let mut response = request.into_ok_response()?;
+    let mut response = request.into_response(
+        200,
+        Some("OK"),
+        &[
+            ("Content-Type", "text/plain"),
+            ("Access-Control-Allow-Origin", "*"),
+        ],
+    )?;
     response.write("Rebooting\n".as_bytes())?;
     std::thread::spawn(|| {
         log::info!("Rebooting in {REBOOT_DELAY_MS}ms");
@@ -122,55 +152,29 @@ fn handle_wifi(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
 fn handle_ap_delete(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
     log::info!("Delete AP: {:?}", request.uri());
     let ssid = request.uri().split('/').next_back().expect("Invalid SSID");
-    let ssid = urlencoding::decode(ssid)?;
-    if APStore::get_ap_str(&ssid)?.is_some() {
+    let ssid = urlencoding::decode(ssid)?.clone().into_owned();
+
+    let (level, message) = if APStore::get_ap_str(&ssid)?.is_some() {
         match APStore::delete_ap(&ssid) {
-            Ok(_) => {
-                log::info!("Successfully deleted SSID: {ssid}");
-                let flash = serde_json::to_string(&FlashMsg {
-                    level: "success",
-                    message: &format!("Successfully deleted SSID: {ssid}"),
-                })?;
-                request.into_response(
-                    302,
-                    Some("Successfully deleted SSID"),
-                    &[
-                        ("Location", "/wifi"),
-                        ("Set-Cookie", &format!("flash_msg={flash}; path=/")),
-                    ],
-                )?;
-            }
-            Err(e) => {
-                log::error!("Failed to delete SSID: {ssid} - {e}");
-                let flash = serde_json::to_string(&FlashMsg {
-                    level: "error",
-                    message: &format!("Error: Failed to delete SSID: {ssid}"),
-                })?;
-                request.into_response(
-                    302,
-                    Some("Failed to delete SSID"),
-                    &[
-                        ("Location", "/wifi"),
-                        ("Set-Cookie", &format!("flash_msg={flash}; path=/")),
-                    ],
-                )?;
-            }
+            Ok(_) => ("success", &format!("Successfully deleted SSID: {ssid}")),
+            Err(e) => (
+                "error",
+                &format!("Error: Failed to delete SSID: {ssid} [{e}]"),
+            ),
         }
     } else {
-        log::error!("Unknown SSID: {ssid}");
-        let flash = serde_json::to_string(&FlashMsg {
-            level: "error",
-            message: &format!("Error: Invalid SSID {ssid}"),
-        })?;
-        request.into_response(
-            302,
-            Some("Unknown SSID"),
-            &[
-                ("Location", "/wifi"),
-                ("Set-Cookie", &format!("flash_msg={flash}; path=/")),
-            ],
-        )?;
-    }
+        ("error", &format!("Error: Invalid SSID {ssid}"))
+    };
+
+    log::info!("{level}: {message}");
+    request.into_response(
+        302,
+        Some(message),
+        &[
+            ("Location", "/wifi"),
+            ("Set-Cookie", &FlashMsg::cookie(level, message)?),
+        ],
+    )?;
     Ok::<(), anyhow::Error>(())
 }
 
@@ -182,43 +186,26 @@ fn handle_ap_add(mut request: Request<&mut EspHttpConnection>) -> anyhow::Result
     match serde_urlencoded::from_bytes(&buf[0..len]) {
         Ok(config) => {
             // Save the WiFi configuration
-            log::info!("++ Config: {config:?}");
-            log::info!(
-                "-- Config: {:?}",
-                crate::wifi::APConfig::new("ABCD", "123456789")?
-            );
-            match APStore::add_ap(&config) {
-                Ok(_) => {
-                    log::info!("Successfully saved SSID: {}", config.ssid);
-                    let flash = serde_json::to_string(&FlashMsg {
-                        level: "success",
-                        message: &format!("Successfully saved SSID: {}", config.ssid),
-                    })?;
-                    request.into_response(
-                        302,
-                        Some("Successfully saved SSID"),
-                        &[
-                            ("Location", "/wifi"),
-                            ("Set-Cookie", &format!("flash_msg={flash}; path=/")),
-                        ],
-                    )?;
-                }
-                Err(e) => {
-                    log::error!("Failed to save SSID: {} - {}", config.ssid, e);
-                    let flash = serde_json::to_string(&FlashMsg {
-                        level: "error",
-                        message: &format!("Failed to save SSID: {} - {}", config.ssid, e),
-                    })?;
-                    request.into_response(
-                        302,
-                        Some("Failed to save SSID"),
-                        &[
-                            ("Location", "/wifi"),
-                            ("Set-Cookie", &format!("flash_msg={flash}; path=/")),
-                        ],
-                    )?;
-                }
-            }
+            log::info!("Wifi Config: {config:?}");
+            let (level, message) = match APStore::add_ap(&config) {
+                Ok(_) => (
+                    "success",
+                    &format!("Successfully saved SSID: {}", config.ssid),
+                ),
+                Err(e) => (
+                    "error",
+                    &format!("Failed to save SSID: {} [{}]", config.ssid, e),
+                ),
+            };
+            log::info!("{level}: {message}");
+            request.into_response(
+                302,
+                Some(message),
+                &[
+                    ("Location", "/wifi"),
+                    ("Set-Cookie", &FlashMsg::cookie(level, message)?),
+                ],
+            )?;
         }
         Err(_) => {
             log::error!("Invalid form data");
