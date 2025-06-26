@@ -63,7 +63,7 @@ fn handle_home(
         title: "MQTT Alarm",
         ip: alarm_ip,
     };
-    let mut response = request.into_ok_response()?;
+    let mut response = request.into_response(200, Some("OK"), &[])?;
     let html = home_page.render()?;
     response.write(html.as_bytes())?;
     Ok::<(), anyhow::Error>(())
@@ -80,7 +80,7 @@ fn handle_mqtt(
         title: "MQTT Settings",
         config: mqtt_config,
     };
-    let mut response = request.into_ok_response()?;
+    let mut response = request.into_response(200, Some("OK"), &[])?;
     let html = mqtt_page.render()?;
     response.write(html.as_bytes())?;
     Ok::<(), anyhow::Error>(())
