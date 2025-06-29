@@ -1,18 +1,33 @@
+use esp_idf_svc::http::Method;
 use esp_idf_svc::nvs::{EspDefaultNvs, EspNvs, EspNvsPartition, NvsDefault};
+
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+
 use std::sync::Mutex;
+
+mod web;
 
 pub static NV_STORE: Mutex<Option<EspNvs<NvsDefault>>> = Mutex::new(None);
 const NV_STORE_MAX: usize = 2048; // Maximum size for serialised data
 
-pub struct NVStore(());
+pub struct NVStore {}
 
 impl NVStore {
-    pub fn init(nvs_partition: EspNvsPartition<NvsDefault>, namespace: &str) -> anyhow::Result<()> {
+    pub fn init(
+        nvs_partition: EspNvsPartition<NvsDefault>,
+        namespace: &str,
+    ) -> anyhow::Result<Self> {
         // Initialise static NVS
         let mut nvs = NV_STORE.lock().unwrap();
         *nvs = Some(EspDefaultNvs::new(nvs_partition, namespace, true)?);
+        Ok(NVStore {})
+    }
+
+    pub fn add_handlers(&self, server: &mut crate::web::WebServer) -> anyhow::Result<()> {
+        server.add_handler("/nvs/get/*", Method::Get, web::handle_nvs_get)?;
+        server.add_handler("/nvs/set/*", Method::Post, web::handle_nvs_set)?;
+        server.add_handler("/nvs/delete/*", Method::Get, web::handle_nvs_delete)?;
         Ok(())
     }
 

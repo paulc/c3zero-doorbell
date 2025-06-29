@@ -8,6 +8,7 @@ pub mod httpd;
 pub mod nvs;
 pub mod rgb;
 pub mod stats;
+pub mod web;
 pub mod wifi;
 pub mod ws2812;
 pub mod ws2812_quad;
