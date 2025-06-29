@@ -44,7 +44,7 @@ impl<'a> WifiManager<'a> {
         }))
     }
 
-    pub fn known_aps(visible: &Vec<AccessPointInfo>, known: &Vec<APConfig>) -> Vec<APConfig> {
+    pub fn known_aps(visible: &[AccessPointInfo], known: &[APConfig]) -> Vec<APConfig> {
         known
             .iter()
             .filter(|ap| visible.iter().any(|v| v.ssid == ap.ssid))
