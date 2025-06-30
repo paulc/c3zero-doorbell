@@ -8,7 +8,7 @@ use crate::wifi::{APStore, WIFI_SCAN};
 #[derive(askama::Template)]
 #[template(path = "wifi.html")]
 struct WiFiConfig<'a> {
-    visible: Vec<(&'a str, u8, i8, &'a str)>,
+    visible: Vec<(&'a str, u8, i8, String)>,
     aps: Vec<&'a str>,
     navbar: crate::web::NavBar<'static>,
 }
@@ -27,8 +27,8 @@ pub fn wifi_handler(
                     ap.channel,
                     ap.signal_strength,
                     match ap.auth_method {
-                        Some(_) => "Some",
-                        None => "None",
+                        Some(m) => format!("{m:?}"),
+                        None => "None".to_string(),
                     },
                 )
             })
