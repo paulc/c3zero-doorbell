@@ -2,16 +2,8 @@ use anyhow::Result;
 use esp_idf_hal::rmt::{config::TransmitConfig, FixedLengthSignal, PinState, Pulse, TxRmtDriver};
 use std::time::Duration;
 
-use crate::rgb::{Rgb, RgbLayout};
-
-// ws2812 timings
-const T0H: u64 = 400;
-const T0L: u64 = 850;
-const T1H: u64 = 800;
-const T1L: u64 = 450;
-const _RESET: u64 = 50000;
-
-pub type Ws2812RmtChannel = esp_idf_hal::rmt::CHANNEL0;
+use crate::ws2812::{Rgb, RgbLayout};
+use crate::ws2812::{Ws2812RmtChannel, T0H, T0L, T1H, T1L};
 
 // Quad WS2812 status display on RMT Channel 0
 pub struct Ws2812RmtQuad<'a> {

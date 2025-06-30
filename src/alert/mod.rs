@@ -5,8 +5,6 @@ use esp_idf_svc::mqtt::client::{EspMqttClient, MqttClientConfiguration, QoS};
 
 use std::sync::mpsc;
 
-use crate::wifi;
-
 use serde::Serialize;
 
 #[derive(Debug)]
@@ -83,11 +81,14 @@ const MQTT_TOPIC: &str = "doorbell/ring";
 const MQTT_TOPIC_STATUS: &str = "doorbell/ip";
 
 fn send_status(mqtt: &mut EspMqttClient<'static>) {
+    /* XXX FIX
     let alarm_ip = if let Ok(Some(ip)) = wifi::IP_INFO.get_cloned() {
         ip.ip.to_string()
     } else {
         "<Unknown IP>".to_string()
     };
+    */
+    let alarm_ip = "<Unknown IP>".to_string();
 
     match mqtt.enqueue(
         MQTT_TOPIC_STATUS,

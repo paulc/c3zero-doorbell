@@ -5,17 +5,44 @@
 {% block body %}
 <h1>{{ title }}</h1>
     <div class="container">
-        <div class="ip-address">
-            <h3>IP Address:</h3>
-            <span>{{ ip }}</span>
-        </div>
+        <!-- List of Known APs -->
+        <h3>Status</h3>
+        <table class="rounded">
+            <thead>
+                <tr>
+                    <th style="width: 30%">Key</th>
+                    <th style="width: 70%">Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in status %}
+                <tr>
+                    <td>{{ s.0 }}</td>
+                    <td>{{ s.1 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 {% endblock %}
 
+{% block navbar %}
+    <nav class="navbar">
+      <a href="/" class="navbar-brand">{{ navbar.title }}</a>
+
+        <!-- Mobile menu button -->
+        <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+        <!-- Navigation links -->
+        <ul class="navbar-links" id="navbarLinks">
+          {% for link in navbar.links %}
+            <li class="nav-item">
+              <a href="{{ link.url }}" class="nav-link">{{ link.label }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+    </nav>
+{% endblock %}
+
 {% block head %}
-    <style>
-        .ip-address { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
-        .ip-address h3 { margin: 0; } 
-        .button-row { display: flex; gap: 10px; justify-content: space-between; }
-    </style>
 {% endblock %}

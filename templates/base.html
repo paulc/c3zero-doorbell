@@ -77,8 +77,9 @@
         <button class="flash-close" aria-label="Close">&times;</button>
     </div>
 
-    {% include "navbar.html" %}
+    {% block navbar %}{% endblock %}
 
     {% block body %}<h1>Body</h1>{% endblock %}
+
   </body>
 </html>

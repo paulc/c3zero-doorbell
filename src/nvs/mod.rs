@@ -6,6 +6,8 @@ use serde::Serialize;
 
 use std::sync::Mutex;
 
+// use crate::web::NavBar;
+
 mod web;
 
 pub static NV_STORE: Mutex<Option<EspNvs<NvsDefault>>> = Mutex::new(None);
@@ -24,7 +26,11 @@ impl NVStore {
         Ok(NVStore {})
     }
 
-    pub fn add_handlers(&self, server: &mut crate::web::WebServer) -> anyhow::Result<()> {
+    pub fn add_handlers(
+        &self,
+        server: &mut crate::web::WebServer,
+        _navbar: crate::web::NavBar<'static>,
+    ) -> anyhow::Result<()> {
         server.add_handler("/nvs/get/*", Method::Get, web::handle_nvs_get)?;
         server.add_handler("/nvs/set/*", Method::Post, web::handle_nvs_set)?;
         server.add_handler("/nvs/delete/*", Method::Get, web::handle_nvs_delete)?;

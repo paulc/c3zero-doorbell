@@ -3,7 +3,7 @@ use heapless::String;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Eq)]
 pub struct APConfig {
     pub ssid: String<32>,
     pub password: String<64>,
@@ -25,10 +25,10 @@ impl APConfig {
 pub struct APStore(());
 
 impl APStore {
-    pub fn get_aps() -> anyhow::Result<impl Iterator<Item = APConfig>> {
+    pub fn get_aps() -> anyhow::Result<Vec<APConfig>> {
         let out = NVStore::get::<HashMap<heapless::String<32>, APConfig>>("aps")?
             .unwrap_or(HashMap::new());
-        Ok(out.into_values())
+        Ok(out.into_values().collect::<Vec<_>>())
     }
     pub fn get_ap(ssid: &heapless::String<32>) -> anyhow::Result<Option<APConfig>> {
         let out = NVStore::get::<HashMap<heapless::String<32>, APConfig>>("aps")?

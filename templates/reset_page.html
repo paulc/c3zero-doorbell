@@ -94,3 +94,22 @@
 
 {% block head %}
 {% endblock %}
+
+{% block navbar %}
+    <nav class="navbar">
+      <a href="/" class="navbar-brand">{{ navbar.title }}</a>
+
+        <!-- Mobile menu button -->
+        <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+        <!-- Navigation links -->
+        <ul class="navbar-links" id="navbarLinks">
+          {% for link in navbar.links %}
+            <li class="nav-item">
+              <a href="{{ link.url }}" class="nav-link">{{ link.label }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+    </nav>
+{% endblock %}
+

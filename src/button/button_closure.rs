@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 const DEBOUNCE_DELAY: Duration = Duration::from_millis(50);
 
-pub fn button_task<F1, F2>(
+pub fn button_closure<F1, F2>(
     button: AnyIOPin,
     f_press: Option<F1>,
     f_long_press: Option<F2>,

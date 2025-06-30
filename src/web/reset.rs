@@ -4,7 +4,9 @@ use askama::Template;
 
 #[derive(askama::Template)]
 #[template(path = "reset_page.html")]
-struct ResetPage {}
+struct ResetPage {
+    navbar: crate::web::NavBar<'static>,
+}
 
 const REBOOT_DELAY_MS: u32 = 1000;
 
@@ -20,10 +22,16 @@ pub fn handle_reset(request: Request<&mut EspHttpConnection>) -> anyhow::Result<
     Ok(())
 }
 
-pub fn handle_reset_page(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
-    let reset_page = ResetPage {};
-    let mut response = request.into_ok_response()?;
-    let html = reset_page.render()?;
-    response.write(html.as_bytes())?;
-    Ok::<(), anyhow::Error>(())
+pub fn reset_handler(
+    navbar: crate::web::NavBar<'static>,
+) -> impl for<'r> Fn(Request<&mut EspHttpConnection<'r>>) -> anyhow::Result<()> + Send + 'static {
+    move |request| {
+        let reset_page = ResetPage {
+            navbar: navbar.clone(),
+        };
+        let mut response = request.into_ok_response()?;
+        let html = reset_page.render()?;
+        response.write(html.as_bytes())?;
+        Ok::<(), anyhow::Error>(())
+    }
 }
