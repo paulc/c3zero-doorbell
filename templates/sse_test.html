@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}SSE Test{% endblock %}
+
+{% block head %}
+    <style>
+        #eventData {
+            height: 200px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: scroll;
+            margin-top: 20px;
+            background-color: #f9f9f9;
+            white-space: pre-wrap;
+            border-radius: 4px;
+        }
+        .status {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+{% endblock %}
+
+{% block body %}
+    <div class="container">
+        <h1>Server-Sent Events Test</h3>
+
+        <div id="status" class="status disconnected">Disconnected</div>
+
+        <div>
+            <button class="button" id="connectBtn">Connect</button>
+            <button class="button danger" id="disconnectBtn">Disconnect</button>
+        </div>
+
+        <h2>Event Data:</h2>
+
+        <div id="eventData">Waiting:
+        </div>
+    </div>
+
+    <script>
+        // DOM elements
+        const eventDataElement = document.getElementById('eventData');
+        const statusElement = document.getElementById('status');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+
+        // SSE variables
+        let eventSource;
+        const sseUrl = '/sse';
+
+        // Update connection status
+        function updateStatus(connected) {
+            if (connected) {
+                statusElement.textContent = 'Connected';
+                statusElement.className = 'status connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                // Clear data
+                eventDataElement.innerHTML = "Waiting:\n";
+            } else {
+                statusElement.textContent = 'Disconnected';
+                statusElement.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        // Connect to SSE
+        function connectToSSE() {
+            if (eventSource) {
+                return; // Already connected
+            }
+
+            eventSource = new EventSource(sseUrl);
+
+            eventSource.onopen = () => {
+                updateStatus(true);
+                addToDisplay('SSE connection opened');
+            };
+
+            eventSource.onerror = () => {
+                addToDisplay('SSE connection error');
+                updateStatus(false);
+                eventSource.close();
+                eventSource = null;
+            };
+
+            // Generic message handler
+            eventSource.onmessage = (event) => {
+                addToDisplay(`Message: ${event.data}`);
+            };
+
+            // Specific event type handler (if your server uses custom event types)
+            eventSource.addEventListener('data', (event) => {
+                addToDisplay(`Data: ${event.data}`);
+            });
+
+            // You can add more event listeners for different event types
+            eventSource.addEventListener('status', (event) => {
+                addToDisplay(`Status: ${event.data}`);
+            });
+        }
+
+        // Disconnect from SSE
+        function disconnectFromSSE() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+                addToDisplay('SSE connection closed');
+                updateStatus(false);
+            }
+        }
+
+        // Add text to the display
+        function addToDisplay(text) {
+            const now = new Date();
+            const timestamp = now.toLocaleTimeString();
+            eventDataElement.innerHTML += `[${timestamp}] ${text}\n`;
+            // Auto-scroll to bottom
+            eventDataElement.scrollTop = eventDataElement.scrollHeight;
+        }
+
+        // Button event listeners
+        connectBtn.addEventListener('click', connectToSSE);
+        disconnectBtn.addEventListener('click', disconnectFromSSE);
+
+        // Initialize
+        updateStatus(false);
+        disconnectBtn.disabled = true;
+
+        // Clean up when page unloads
+        window.addEventListener('beforeunload', () => {
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+    </script>
+
+{% endblock %}
+
+{% block navbar %}
+    <nav class="navbar">
+      <a href="/" class="navbar-brand">{{ navbar.title }}</a>
+
+        <!-- Mobile menu button -->
+        <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+        <!-- Navigation links -->
+        <ul class="navbar-links" id="navbarLinks">
+          {% for link in navbar.links %}
+            <li class="nav-item">
+              <a href="{{ link.url }}" class="nav-link">{{ link.label }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+    </nav>
+{% endblock %}
+
