@@ -3,6 +3,7 @@
 pub mod adc;
 pub mod alert;
 pub mod button;
+pub mod mqtt;
 pub mod nvs;
 pub mod stats;
 pub mod web;

@@ -66,6 +66,12 @@ impl<'a> WifiManager<'a> {
         Ok(())
     }
 
+    pub fn is_connected(&self) -> anyhow::Result<bool> {
+        self.wifi
+            .is_connected()
+            .map_err(|e| anyhow::anyhow!("WiFi Error: {e}"))
+    }
+
     pub fn scan(&mut self) -> anyhow::Result<()> {
         let config = Configuration::Client(esp_idf_svc::wifi::ClientConfiguration {
             ..Default::default()
