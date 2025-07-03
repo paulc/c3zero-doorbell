@@ -11,18 +11,17 @@ pub struct MqttConfig {
     pub topic: Vec<String>,
 }
 
-pub struct MqttSubscribe {
-    _config: MqttConfig,
+pub struct MqttManager {
+    config: MqttConfig,
     client: EspMqttClient<'static>,
 }
 
-impl MqttSubscribe {
+impl MqttManager {
     pub fn new<F>(config: MqttConfig, callback: F) -> anyhow::Result<Self>
     where
-        F: Fn(String, String) + Send + 'static,
+        F: Fn(&str, &[u8]) + Send + 'static,
     {
         log::info!("Creating MQTT Client");
-        let topic = config.topic.clone();
         let mut client = EspMqttClient::new_cb(
             &config.url,
             &MqttClientConfiguration {
@@ -33,15 +32,13 @@ impl MqttSubscribe {
                 let e = e.payload();
                 log::info!("MQTT Event: {e:?}");
                 if let EventPayload::Received {
-                    topic: Some(rx),
+                    topic: Some(t),
                     details: Details::Complete,
                     data,
                     ..
                 } = e
                 {
-                    topic.iter().filter(|&t| t == rx).for_each(|t| {
-                        callback(t.to_string(), String::from_utf8_lossy(data).to_string());
-                    })
+                    callback(t, data);
                 }
             },
         )?;
@@ -49,13 +46,24 @@ impl MqttSubscribe {
             log::info!("Subscribing: {t}");
             client.subscribe(t, QoS::AtMostOnce)?;
         }
-        Ok(MqttSubscribe {
-            _config: config,
-            client,
-        })
+        Ok(MqttManager { config, client })
     }
 
-    pub fn enqueue(&mut self, topic: &str, retain: bool, payload: &[u8]) -> anyhow::Result<()> {
+    pub fn subscribe(&mut self, topic: &str) -> anyhow::Result<()> {
+        self.client
+            .subscribe(topic, QoS::AtMostOnce)
+            .and_then(|_| Ok(self.config.topic.push(topic.to_owned())))
+            .map_err(|e| anyhow::anyhow!("MQTT Error: {e}"))
+    }
+
+    pub fn unsubscribe(&mut self, topic: &str) -> anyhow::Result<()> {
+        self.client
+            .unsubscribe(topic)
+            .and_then(|_| Ok(self.config.topic.retain(|t| t != topic)))
+            .map_err(|e| anyhow::anyhow!("MQTT Error: {e}"))
+    }
+
+    pub fn send(&mut self, topic: &str, payload: &[u8], retain: bool) -> anyhow::Result<()> {
         self.client
             .enqueue(topic, QoS::AtMostOnce, retain, payload)
             .map(|_| ())

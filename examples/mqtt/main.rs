@@ -102,7 +102,7 @@ fn main() -> anyhow::Result<()> {
         home_page::make_handler(&wifi_state, NAVBAR),
     )?;
 
-    // Create MqttSubscribe
+    // Create Mqtt handler
     let _mqtt = mqtt::mqtt_handler()?;
 
     // Start watchdog after spawning tasks
@@ -135,18 +135,18 @@ fn main() -> anyhow::Result<()> {
 
 mod mqtt {
 
-    use doorbell::mqtt::{MqttConfig, MqttSubscribe};
+    use doorbell::mqtt::{MqttConfig, MqttManager};
 
-    pub fn mqtt_handler() -> anyhow::Result<MqttSubscribe> {
+    pub fn mqtt_handler() -> anyhow::Result<MqttManager> {
         let config = MqttConfig {
             url: "mqtt://192.168.60.1:1883".to_string(),
             client_id: "mqtt-alarm".to_string(),
-            topic: vec!["doorbell/ring".to_string()],
+            topic: vec!["doorbell/ring".to_string(), "test/+".to_string()],
         };
-        let mut mqtt = MqttSubscribe::new(config, |topic, data| {
-            log::info!("[Callback] {topic}:{data}")
+        let mut mqtt = MqttManager::new(config, |topic, data| {
+            log::info!("[Callback] {topic} : {}", String::from_utf8_lossy(data));
         })?;
-        mqtt.enqueue("alarm/status", false, "TEST".as_bytes())?;
+        mqtt.send("alarm/status", "TEST".as_bytes(), false)?;
         Ok(mqtt)
     }
 }
