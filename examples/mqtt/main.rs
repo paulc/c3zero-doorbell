@@ -8,16 +8,18 @@ use esp_idf_svc::http::Method;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::EspWifi;
 
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use doorbell::mqtt::MqttManager;
 use doorbell::nvs::NVStore;
 use doorbell::web::{NavBar, NavLink, WebServer};
-use doorbell::wifi::{APConfig, APStore, WifiManager, WifiState};
+use doorbell::wifi::{APConfig, APStore, WifiManager};
 use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 
 mod home_page;
+mod led_task;
+mod mqtt;
 
 const AP_SSID: &str = "ESP32C3-AP";
 const AP_PASSWORD: &str = "password";
@@ -80,6 +82,10 @@ fn main() -> anyhow::Result<()> {
     let mut led = Ws2812RmtSingle::new(ws2812, channel, RgbLayout::Grb)?;
     led.set(colour::OFF)?;
 
+    // LED task
+    let (led_tx, led_rx) = mpsc::channel::<bool>();
+    let _led_task = thread::spawn(move || led_task::led_task(led, led_rx));
+
     // Try to connect to known AP (or start local AP)
     wifi.scan()?;
     let wifi_state = wifi.try_connect(
@@ -106,25 +112,43 @@ fn main() -> anyhow::Result<()> {
         home_page::make_handler(&wifi_state, NAVBAR),
     )?;
 
-    // Can get strange bugs with MQTT connection failing after reset so
-    // retry if necessary
-    let mut _mqtt: Option<MqttManager> = None;
+    // Create MQTT client
+    let (mqtt_tx, mqtt_rx) = mpsc::channel::<(String, Vec<u8>)>();
+
+    // Work-around for MQTT connection bug
+    let mut mqtt: Option<doorbell::mqtt::MqttManager> = None;
     for _ in 0..5 {
-        if let Ok(m) = mqtt::mqtt_handler() {
-            _mqtt = Some(m);
+        let tx = mqtt_tx.clone();
+        if let Ok(m) = mqtt::mqtt_handler_chan(tx) {
+            mqtt = Some(m);
             break;
         } else {
-            std::thread::sleep(Duration::from_secs(2));
+            std::thread::sleep(Duration::from_secs(5));
             log::error!("MQTT Error - reconnecting...");
         }
     }
 
+    // Handle MQTT messages
+    let _mqtt_t = thread::spawn(move || loop {
+        match mqtt_rx.recv() {
+            Ok((topic, data)) => {
+                let data = String::from_utf8_lossy(&data).to_string();
+                log::info!("mqtt_rx: {topic} : {data}");
+                match data.as_str() {
+                    "ON" => led_tx.send(true).unwrap_or(()),
+                    "OFF" => led_tx.send(false).unwrap_or(()),
+                    _ => {}
+                }
+            }
+            Err(e) => log::error!("Error: mqtt_rx.recv [{e}]"),
+        }
+    });
+
+    let mut count = 0_u64;
     let mut reset_count = 0_u64;
 
     loop {
         thread::sleep(Duration::from_millis(2000));
-        led.set(colour::BLUE)?;
-        led.set(colour::OFF)?;
 
         // Check WiFi connected
         reset_count = if wifi.is_connected()? {
@@ -139,26 +163,13 @@ fn main() -> anyhow::Result<()> {
             esp_idf_hal::reset::restart();
         }
 
-        // Update watchdog
-        watchdog.feed()?
-    }
-}
-
-mod mqtt {
-
-    use doorbell::mqtt::MqttManager;
-
-    pub fn mqtt_handler() -> anyhow::Result<MqttManager> {
-        let url = "mqtt://192.168.60.1:1883";
-        let client_id = "mqtt-alarm";
-        let topics = vec!["doorbell/ring", "test/+"];
-        let mut mqtt = MqttManager::new(url, client_id, |topic, data| {
-            log::info!("[Callback] {topic} : {}", String::from_utf8_lossy(data));
-        })?;
-        for t in topics {
-            mqtt.subscribe(t)?
+        if let Some(ref mut mqtt) = mqtt {
+            mqtt.send("alarm/counter", format!("{count}").as_bytes(), false)?;
         }
-        mqtt.send("alarm/status", "XXXX".as_bytes(), false)?;
-        Ok(mqtt)
+
+        // Update watchdog
+        watchdog.feed()?;
+
+        count += 1;
     }
 }
