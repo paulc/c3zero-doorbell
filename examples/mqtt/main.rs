@@ -11,9 +11,10 @@ use esp_idf_svc::wifi::EspWifi;
 use std::thread;
 use std::time::Duration;
 
+use doorbell::mqtt::MqttManager;
 use doorbell::nvs::NVStore;
 use doorbell::web::{NavBar, NavLink, WebServer};
-use doorbell::wifi::{APConfig, APStore, WifiManager};
+use doorbell::wifi::{APConfig, APStore, WifiManager, WifiState};
 use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 
 mod home_page;
@@ -88,6 +89,9 @@ fn main() -> anyhow::Result<()> {
     )?;
     log::info!("WifiState: {wifi_state:?}");
 
+    // Start watchdog
+    let mut watchdog = twdt_driver.watch_current_task()?;
+
     // Start web server
     let mut web = WebServer::new(NAVBAR)?;
 
@@ -102,11 +106,18 @@ fn main() -> anyhow::Result<()> {
         home_page::make_handler(&wifi_state, NAVBAR),
     )?;
 
-    // Create Mqtt handler
-    let _mqtt = mqtt::mqtt_handler()?;
-
-    // Start watchdog after spawning tasks
-    let mut watchdog = twdt_driver.watch_current_task()?;
+    // Can get strange bugs with MQTT connection failing after reset so
+    // retry if necessary
+    let mut _mqtt: Option<MqttManager> = None;
+    for _ in 0..5 {
+        if let Ok(m) = mqtt::mqtt_handler() {
+            _mqtt = Some(m);
+            break;
+        } else {
+            std::thread::sleep(Duration::from_secs(2));
+            log::error!("MQTT Error - reconnecting...");
+        }
+    }
 
     let mut reset_count = 0_u64;
 
@@ -135,18 +146,19 @@ fn main() -> anyhow::Result<()> {
 
 mod mqtt {
 
-    use doorbell::mqtt::{MqttConfig, MqttManager};
+    use doorbell::mqtt::MqttManager;
 
     pub fn mqtt_handler() -> anyhow::Result<MqttManager> {
-        let config = MqttConfig {
-            url: "mqtt://192.168.60.1:1883".to_string(),
-            client_id: "mqtt-alarm".to_string(),
-            topic: vec!["doorbell/ring".to_string(), "test/+".to_string()],
-        };
-        let mut mqtt = MqttManager::new(config, |topic, data| {
+        let url = "mqtt://192.168.60.1:1883";
+        let client_id = "mqtt-alarm";
+        let topics = vec!["doorbell/ring", "test/+"];
+        let mut mqtt = MqttManager::new(url, client_id, |topic, data| {
             log::info!("[Callback] {topic} : {}", String::from_utf8_lossy(data));
         })?;
-        mqtt.send("alarm/status", "TEST".as_bytes(), false)?;
+        for t in topics {
+            mqtt.subscribe(t)?
+        }
+        mqtt.send("alarm/status", "XXXX".as_bytes(), false)?;
         Ok(mqtt)
     }
 }
