@@ -11,7 +11,6 @@ use esp_idf_svc::wifi::EspWifi;
 use std::thread;
 use std::time::Duration;
 
-use doorbell::mqtt::MqttManager;
 use doorbell::nvs::NVStore;
 use doorbell::web::{NavBar, NavLink, WebServer};
 use doorbell::wifi::{APConfig, APStore, WifiManager, WifiState};
@@ -106,23 +105,13 @@ fn main() -> anyhow::Result<()> {
         home_page::make_handler(&wifi_state, NAVBAR),
     )?;
 
-    // Can get strange bugs with MQTT connection failing after reset so
-    // retry if necessary
-    let mut _mqtt: Option<MqttManager> = None;
-    for _ in 0..5 {
-        if let Ok(m) = mqtt::mqtt_handler() {
-            _mqtt = Some(m);
-            break;
-        } else {
-            std::thread::sleep(Duration::from_secs(2));
-            log::error!("MQTT Error - reconnecting...");
-        }
-    }
+    mqtt::mqtt_handler()?;
 
     let mut reset_count = 0_u64;
 
     loop {
         thread::sleep(Duration::from_millis(2000));
+        log::info!("Tick");
         led.set(colour::BLUE)?;
         led.set(colour::OFF)?;
 
@@ -146,19 +135,75 @@ fn main() -> anyhow::Result<()> {
 
 mod mqtt {
 
-    use doorbell::mqtt::MqttManager;
+    use esp_idf_svc::mqtt::client::{
+        Details, EspMqttClient, EventPayload, MqttClientConfiguration, QoS,
+    };
 
-    pub fn mqtt_handler() -> anyhow::Result<MqttManager> {
+    pub fn mqtt_handler() -> anyhow::Result<()> {
         let url = "mqtt://192.168.60.1:1883";
         let client_id = "mqtt-alarm";
         let topics = vec!["doorbell/ring", "test/+"];
-        let mut mqtt = MqttManager::new(url, client_id, |topic, data| {
-            log::info!("[Callback] {topic} : {}", String::from_utf8_lossy(data));
-        })?;
+
+        log::info!("Starting MQTT Connection");
+        let mut client = EspMqttClient::new_cb(
+            url,
+            &MqttClientConfiguration {
+                client_id: Some(client_id),
+                ..Default::default()
+            },
+            |e| log::info!("MQTT Message: {:?}", e.payload()),
+        )?;
         for t in topics {
-            mqtt.subscribe(t)?
+            log::info!("Subscribing: {t}");
+            client.subscribe(t, QoS::AtLeastOnce).unwrap();
         }
-        mqtt.send("alarm/status", "XXXX".as_bytes(), false)?;
-        Ok(mqtt)
+        client.enqueue("alarm/status", QoS::AtLeastOnce, false, "TEST".as_bytes())?;
+        /*
+        log::info!("Starting MQTT Connection");
+        let (mut mqtt_client, mut mqtt_connection) = EspMqttClient::new(
+            url,
+            &MqttClientConfiguration {
+                client_id: Some(client_id),
+                ..Default::default()
+            },
+        )?;
+
+        let _callback = |t: &str, data: &[u8]| {
+            log::info!("MQTT Callback: {t} {}", String::from_utf8_lossy(data));
+        };
+
+        log::info!("Spawning event thread");
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        let _mqtt_thread = std::thread::Builder::new()
+            .stack_size(8000)
+            .spawn(move || {
+                log::info!("MQTT Listening for messages");
+
+                while let Ok(event) = mqtt_connection.next() {
+                    log::info!("[Queue] Event: {}", event.payload());
+                    match event.payload() {
+                        EventPayload::Received {
+                            topic: Some(t),
+                            details: Details::Complete,
+                            data,
+                            ..
+                        } => log::info!("Msg: {t} {}", String::from_utf8_lossy(data)), // callback(t, data),
+                        EventPayload::Disconnected => break,
+                        _ => (),
+                    }
+                }
+
+                log::info!("Connection closed");
+            })
+            .unwrap();
+
+        for t in topics {
+            log::info!("Subscribing: {t}");
+            mqtt_client.subscribe(t, QoS::AtLeastOnce).unwrap();
+        }
+        */
+
+        Ok(())
     }
 }
