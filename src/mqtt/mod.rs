@@ -94,9 +94,9 @@ impl MqttManager {
     pub fn subscribe(&mut self, topic: &str) -> anyhow::Result<()> {
         self.client
             .subscribe(topic, QoS::AtMostOnce)
-            .and_then(|id| {
+            .map(|id| {
                 log::info!("Subscribed: {topic} [{id}]");
-                Ok(self.topics.push(topic.to_owned()))
+                self.topics.push(topic.to_owned())
             })
             .map_err(|e| anyhow::anyhow!("MQTT Error: {e}"))
     }
@@ -104,9 +104,9 @@ impl MqttManager {
     pub fn unsubscribe(&mut self, topic: &str) -> anyhow::Result<()> {
         self.client
             .unsubscribe(topic)
-            .and_then(|_| {
+            .map(|_| {
                 log::info!("Unsubscribed: {topic}");
-                Ok(self.topics.retain(|t| t != topic))
+                self.topics.retain(|t| t != topic)
             })
             .map_err(|e| anyhow::anyhow!("MQTT Error: {e}"))
     }
@@ -119,9 +119,6 @@ impl MqttManager {
     }
 
     pub fn check_url(url: &str) -> bool {
-        match EspMqttClient::new(url, &Default::default()) {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        EspMqttClient::new(url, &Default::default()).is_ok()
     }
 }
