@@ -26,7 +26,7 @@ const AP_PASSWORD: &str = "password";
 
 const NVS_NAMESPACE: &str = "DOORBELL";
 
-const WATCHDOG_TIMEOUT: u64 = 5;
+const WATCHDOG_TIMEOUT: u64 = 10;
 const RESET_THRESHOLD: u64 = 5;
 
 // Static NavBar
@@ -95,9 +95,6 @@ fn main() -> anyhow::Result<()> {
     )?;
     log::info!("WifiState: {wifi_state:?}");
 
-    // Start watchdog
-    let mut watchdog = twdt_driver.watch_current_task()?;
-
     // Start web server
     let mut web = WebServer::new(NAVBAR)?;
 
@@ -117,14 +114,15 @@ fn main() -> anyhow::Result<()> {
 
     // Work-around for MQTT connection bug
     let mut mqtt: Option<doorbell::mqtt::MqttManager> = None;
-    for _ in 0..5 {
+    for n in 0..10 {
         let tx = mqtt_tx.clone();
         if let Ok(m) = mqtt::mqtt_handler_chan(tx) {
             mqtt = Some(m);
             break;
         } else {
-            std::thread::sleep(Duration::from_secs(5));
-            log::error!("MQTT Error - reconnecting...");
+            log::info!("Sleeping: {}s", std::cmp::max(1, n * n));
+            std::thread::sleep(Duration::from_secs(std::cmp::max(1, n * n)));
+            log::error!("MQTT Error - trying to reconnect...");
         }
     }
 
@@ -140,9 +138,17 @@ fn main() -> anyhow::Result<()> {
                     _ => {}
                 }
             }
-            Err(e) => log::error!("Error: mqtt_rx.recv [{e}]"),
+            Err(e) => {
+                // Channel closed - restart
+                log::error!("Error: mqtt_rx.recv [{e}]");
+                thread::sleep(Duration::from_millis(2000));
+                esp_idf_hal::reset::restart();
+            }
         }
     });
+
+    // Start watchdog after initialisation
+    let mut watchdog = twdt_driver.watch_current_task()?;
 
     let mut count = 0_u64;
     let mut reset_count = 0_u64;

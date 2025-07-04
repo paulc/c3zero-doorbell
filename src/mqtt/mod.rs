@@ -75,7 +75,12 @@ impl MqttManager {
                         data,
                         ..
                     } => tx.send((t.to_owned(), data.to_vec())).unwrap_or(()),
-                    EventPayload::Disconnected => (), // XXX Handle disconnect
+                    EventPayload::Disconnected => {
+                        // Disconnected - safest thing to do is reboot
+                        log::error!("MQTT Client Disconnected");
+                        // Trigger watchdog
+                        // loop {}
+                    }
                     _ => (),
                 }
             },
