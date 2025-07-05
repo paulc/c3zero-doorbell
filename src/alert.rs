@@ -62,7 +62,7 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
                 }
 
                 match mqtt_client.enqueue(
-                    &format!("{}/ring_stats", MQTT_TOPIC_STATUS),
+                    &format!("{MQTT_TOPIC_STATUS}/ring_stats"),
                     QoS::AtMostOnce,
                     false,
                     s.to_string().as_bytes(),
@@ -106,7 +106,7 @@ fn send_status(mqtt: &mut EspMqttClient<'static>) {
     };
 
     match mqtt.enqueue(
-        &format!("{}/ip", MQTT_TOPIC_STATUS),
+        &format!("{MQTT_TOPIC_STATUS}/ip"),
         QoS::AtMostOnce,
         false,
         alarm_ip.as_bytes(),
@@ -116,7 +116,7 @@ fn send_status(mqtt: &mut EspMqttClient<'static>) {
     }
 
     match mqtt.enqueue(
-        &format!("{}/stats", MQTT_TOPIC_STATUS),
+        &format!("{MQTT_TOPIC_STATUS}/stats"),
         QoS::AtMostOnce,
         false,
         stats.as_bytes(),
