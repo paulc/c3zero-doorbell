@@ -1,7 +1,9 @@
 use esp_idf_hal::delay::TickType;
 use esp_idf_hal::timer::TimerDriver;
 use esp_idf_svc::hal::adc::{AdcContConfig, AdcContDriver, AdcMeasurement, Attenuated};
+
 use std::sync::mpsc;
+use std::sync::Mutex;
 
 use crate::stats;
 
@@ -12,8 +14,10 @@ pub const ADC_MIN_THRESHOLD: f64 = 0.1; // If Hall-Effect sensor is on we should
                                         // we assume that sensor is powered off
 pub const THRESHOLD_BUFFER: usize = 5; // Average std-dev threshold over this number of frames
 
+pub static ADC_STATS: Mutex<Option<Stats>> = Mutex::new(None);
+
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Stats {
     pub count: usize,
     pub elapsed: u64,
@@ -98,15 +102,18 @@ pub fn adc_task(
                     let (mean, stddev) = stats::stats(&samples_f64);
                     let (ring, threshold) = stats::check_ring(mean, stddev, &mut prev);
 
+                    let s = Stats {
+                        count,
+                        elapsed,
+                        mean,
+                        stddev,
+                        threshold,
+                        ring,
+                    };
+                    ADC_STATS.replace(Some(s.clone())).unwrap();
+
                     if stats {
-                        tx.send(RingMessage::Stats(Stats {
-                            count,
-                            elapsed,
-                            mean,
-                            stddev,
-                            threshold,
-                            ring,
-                        }))?;
+                        tx.send(RingMessage::Stats(s))?;
                     }
 
                     debounce = [debounce[1], ring];

@@ -5,6 +5,7 @@ use esp_idf_svc::mqtt::client::{EspMqttClient, MqttClientConfiguration, QoS};
 
 use std::sync::mpsc;
 
+use crate::adc;
 use crate::wifi;
 
 use serde::Serialize;
@@ -89,12 +90,18 @@ fn send_status(mqtt: &mut EspMqttClient<'static>) {
         "<Unknown IP>".to_string()
     };
 
-    match mqtt.enqueue(
-        MQTT_TOPIC_STATUS,
-        QoS::AtMostOnce,
-        false,
-        alarm_ip.as_bytes(),
-    ) {
+    let stats = if let Ok(Some(s)) = adc::ADC_STATS.get_cloned() {
+        format!(
+            "[{}/{:06}] Mean: {:.4} :: Std Dev: {:.4}/{:.4} :: Ring: {}",
+            s.count, s.elapsed, s.mean, s.stddev, s.threshold, s.ring
+        )
+    } else {
+        "<No Stats>".to_string()
+    };
+
+    let msg = format!("{alarm_ip} : {stats}");
+
+    match mqtt.enqueue(MQTT_TOPIC_STATUS, QoS::AtMostOnce, false, msg.as_bytes()) {
         Ok(_id) => log::info!("MQTT Send: {alarm_ip}"),
         Err(e) => log::error!("MQTT Error: {e}"),
     }

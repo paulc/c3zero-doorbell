@@ -17,6 +17,8 @@ use doorbell::rgb;
 use doorbell::wifi;
 use doorbell::ws2812;
 
+const ENABLE_STATS: bool = true;
+
 fn main() -> anyhow::Result<()> {
     esp_idf_hal::sys::link_patches();
 
@@ -31,7 +33,7 @@ fn main() -> anyhow::Result<()> {
 
     // Hardware Watchdog
     let twdt_config = TWDTConfig {
-        duration: Duration::from_secs(2),
+        duration: Duration::from_secs(10),
         panic_on_trigger: true,
         subscribed_idle_tasks: enumset::enum_set!(esp_idf_hal::cpu::Core::Core0),
     };
@@ -107,7 +109,7 @@ fn main() -> anyhow::Result<()> {
                 peripherals.adc1,
                 peripherals.pins.gpio4,
                 adc_tx,
-                false,
+                ENABLE_STATS,
             )
         })
         .expect("Error starting adc_task:");
