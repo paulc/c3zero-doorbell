@@ -28,9 +28,19 @@ pub struct Stats {
     pub ring: bool,
 }
 
+impl std::fmt::Display for Stats {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "[{}/{:06}] Mean: {:.4} :: Std Dev: {:.4}/{:.4} :: Ring: {}",
+            self.count, self.elapsed, self.mean, self.stddev, self.threshold, self.ring
+        )
+    }
+}
+
 #[derive(Debug)]
 pub enum RingMessage {
-    RingStart,
+    RingStart(Stats),
     RingStop,
 }
 
@@ -63,7 +73,7 @@ pub fn adc_task(
     let mut samples = [AdcMeasurement::default(); ADC_BUFFER_LEN];
     let mut samples_f64 = [0_f64; ADC_BUFFER_LEN];
     let mut ring_state = false;
-    let mut debounce = [false; 2];
+    let mut debounce = [false; 3];
     let mut frame = 0_usize;
     let mut prev = [1.0_f64; THRESHOLD_BUFFER];
     let mut ticks = timer.counter()?;
@@ -124,18 +134,24 @@ pub fn adc_task(
                         );
                     }
 
-                    debounce = [debounce[1], ring];
+                    debounce = [debounce[1], debounce[2], ring];
                     match ring_state {
                         true => {
-                            if debounce == [false, false] {
+                            if !ring {
+                                log::info!("Ring: {ring} Debounce: {debounce:?}")
+                            }
+                            if debounce == [false, false, false] {
                                 ring_state = false;
                                 tx.send(RingMessage::RingStop)?;
                             }
                         }
                         false => {
-                            if debounce == [true, true] {
+                            if ring {
+                                log::info!("Ring: {ring} Debounce: {debounce:?}")
+                            }
+                            if debounce == [true, true, true] {
                                 ring_state = true;
-                                tx.send(RingMessage::RingStart)?;
+                                tx.send(RingMessage::RingStart(s))?;
                             }
                         }
                     }

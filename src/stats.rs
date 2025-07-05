@@ -20,7 +20,7 @@ pub fn check_ring(mean: f64, stddev: f64, prev: &mut [f64; THRESHOLD_BUFFER]) ->
     // Trigger if stddev > 5 * threshold
     let ring = stddev > threshold * 5_f64;
     if mean > ADC_MIN_THRESHOLD && !ring {
-        // Update threshold buffer if above ADC_MIN_THRESHOLD and ring not detec
+        // Update threshold buffer if above ADC_MIN_THRESHOLD and ring not deteced
         for i in 0..(THRESHOLD_BUFFER - 1) {
             prev[i] = prev[i + 1];
         }

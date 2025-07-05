@@ -12,7 +12,7 @@ use serde::Serialize;
 
 #[derive(Debug)]
 pub enum AlertMessage {
-    RingStart,
+    RingStart(adc::Stats),
     RingStop,
     Status,
 }
@@ -48,16 +48,27 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
 
     loop {
         match rx.recv() {
-            Ok(AlertMessage::RingStart) => {
+            Ok(AlertMessage::RingStart(s)) => {
                 // Send MQTT Update
                 match mqtt_client.enqueue(MQTT_TOPIC, QoS::AtMostOnce, true, "ON".as_bytes()) {
-                    Ok(id) => log::info!("MQTT Send: id={id}"),
-                    Err(e) => log::error!("MQTT Error; {e}"),
+                    Ok(_id) => log::info!("MQTT Send: {MQTT_TOPIC}"),
+                    Err(e) => log::error!("MQTT Error: {e}"),
                 }
-                // Send Pushover  Webhook
+
+                // Send Pushover Webhook
                 match send_pushover(http_config) {
                     Ok(_) => {}
                     Err(e) => log::error!("Error sending Pushover request: {e}"),
+                }
+
+                match mqtt_client.enqueue(
+                    &format!("{}/ring_stats", MQTT_TOPIC_STATUS),
+                    QoS::AtMostOnce,
+                    false,
+                    s.to_string().as_bytes(),
+                ) {
+                    Ok(_id) => log::info!("MQTT Send: {MQTT_TOPIC_STATUS}/ring_stats"),
+                    Err(e) => log::error!("MQTT Error: {e}"),
                 }
             }
             Ok(AlertMessage::RingStop) => {
@@ -79,7 +90,7 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
 const MQTT_URL: &str = "mqtt://192.168.60.1:1883";
 const MQTT_CLIENT_ID: &str = "Esp32c3-Doorbell";
 const MQTT_TOPIC: &str = "doorbell/ring";
-const MQTT_TOPIC_STATUS: &str = "doorbell/ip";
+const MQTT_TOPIC_STATUS: &str = "doorbell/status";
 
 fn send_status(mqtt: &mut EspMqttClient<'static>) {
     let alarm_ip = if let Ok(Some(ip)) = wifi::IP_INFO.get_cloned() {
@@ -89,18 +100,28 @@ fn send_status(mqtt: &mut EspMqttClient<'static>) {
     };
 
     let stats = if let Ok(Some(s)) = adc::ADC_STATS.get_cloned() {
-        format!(
-            "[{}/{:06}] Mean: {:.4} :: Std Dev: {:.4}/{:.4} :: Ring: {}",
-            s.count, s.elapsed, s.mean, s.stddev, s.threshold, s.ring
-        )
+        s.to_string()
     } else {
         "<No Stats>".to_string()
     };
 
-    let msg = format!("{alarm_ip} : {stats}");
+    match mqtt.enqueue(
+        &format!("{}/ip", MQTT_TOPIC_STATUS),
+        QoS::AtMostOnce,
+        false,
+        alarm_ip.as_bytes(),
+    ) {
+        Ok(_id) => log::info!("MQTT Send: {MQTT_TOPIC_STATUS}/ip"),
+        Err(e) => log::error!("MQTT Error: {e}"),
+    }
 
-    match mqtt.enqueue(MQTT_TOPIC_STATUS, QoS::AtMostOnce, false, msg.as_bytes()) {
-        Ok(_id) => log::info!("MQTT Send: {alarm_ip}"),
+    match mqtt.enqueue(
+        &format!("{}/stats", MQTT_TOPIC_STATUS),
+        QoS::AtMostOnce,
+        false,
+        stats.as_bytes(),
+    ) {
+        Ok(_id) => log::info!("MQTT Send: {MQTT_TOPIC_STATUS}/stats"),
         Err(e) => log::error!("MQTT Error: {e}"),
     }
 }

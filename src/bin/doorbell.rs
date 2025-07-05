@@ -152,10 +152,10 @@ fn main() -> anyhow::Result<()> {
         }
         match adc_rx.recv_timeout(Duration::from_millis(2000)) {
             Ok(msg) => match msg {
-                adc::RingMessage::RingStart => {
+                adc::RingMessage::RingStart(ref s) => {
                     log::info!("adc_rx :: {msg:?}");
                     ring_led.set_low()?;
-                    alert_tx.send(alert::AlertMessage::RingStart)?;
+                    alert_tx.send(alert::AlertMessage::RingStart(s.clone()))?;
                 }
                 adc::RingMessage::RingStop => {
                     log::info!("adc_rx :: {msg:?}");
