@@ -110,6 +110,18 @@ pub fn adc_task(
                         threshold,
                         ring,
                     };
+
+                    log::info!(
+                        "[{}/{:06}] Mean: {:.4} :: Std Dev: {:.4}/{:.4} :: Ring: {}",
+                        s.count,
+                        s.elapsed,
+                        s.mean,
+                        s.stddev,
+                        s.threshold,
+                        s.ring
+                    );
+
+                    /*
                     ADC_STATS.replace(Some(s.clone())).unwrap();
 
                     if stats {
@@ -131,6 +143,7 @@ pub fn adc_task(
                             }
                         }
                     }
+                    */
                     count += 1;
                     frame = 0;
                     ticks = now;

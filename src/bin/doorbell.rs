@@ -114,19 +114,23 @@ fn main() -> anyhow::Result<()> {
         })
         .expect("Error starting adc_task:");
 
+    /*
     // Alert Channel
     let (alert_tx, alert_rx) = mpsc::channel();
 
     let alert_task = thread::Builder::new()
-        .stack_size(8192)
+        .stack_size(12000)
         .spawn(move || alert::alert_task(alert_rx))
         .expect("Error starting alert_task:");
+
+    */
 
     // Dont configure watchdog until we have setup background tasks
     let mut watchdog = twdt_driver.watch_current_task()?;
     let mut count = 0_usize;
 
     loop {
+        /*
         // Check tasks still running - restart if not
         if adc_task.is_finished() || alert_task.is_finished() {
             log::error!("Task Failed - Restarting");
@@ -160,13 +164,18 @@ fn main() -> anyhow::Result<()> {
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(e) => log::error!("ERROR :: adc_rx :: {e:?}"),
         }
+        */
+        std::thread::sleep(Duration::from_secs(1));
+        status.set(rgb::BLUE)?;
+        status.set(rgb::OFF)?;
+
         count += 1;
         if count % 60 == 0 {
             // Update status every 60 secs
             log::info!("adc_rx :: tick");
             status.set(rgb::BLUE)?;
             status.set(rgb::OFF)?;
-            alert_tx.send(alert::AlertMessage::StatusUpdate)?;
+            //alert_tx.send(alert::AlertMessage::StatusUpdate)?;
         }
 
         // Update watchdog
