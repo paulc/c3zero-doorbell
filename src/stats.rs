@@ -17,8 +17,8 @@ pub fn stats(buf: &[f64; ADC_BUFFER_LEN]) -> (f64, f64) {
 
 pub fn check_ring(mean: f64, stddev: f64, prev: &mut [f64; THRESHOLD_BUFFER]) -> (bool, f64) {
     let threshold = prev.iter().sum::<f64>() / prev.len() as f64;
-    // Trigger if stddev > 2.5 * threshold
-    let ring = stddev > threshold * 2.5_f64;
+    // Trigger if stddev > 5 * threshold
+    let ring = stddev > threshold * 5_f64;
     if mean > ADC_MIN_THRESHOLD && !ring {
         // Update threshold buffer if above ADC_MIN_THRESHOLD and ring not detec
         for i in 0..(THRESHOLD_BUFFER - 1) {

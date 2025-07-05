@@ -1,7 +1,10 @@
+#![feature(lock_value_accessors)]
+
 use esp_idf_hal::gpio::{OutputPin, PinDriver};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::task::watchdog::{TWDTConfig, TWDTDriver};
 use esp_idf_svc::eventloop::EspSystemEventLoop;
+use esp_idf_svc::http;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::EspWifi;
 
@@ -31,7 +34,7 @@ fn main() -> anyhow::Result<()> {
 
     // Hardware Watchdog
     let twdt_config = TWDTConfig {
-        duration: Duration::from_secs(2),
+        duration: Duration::from_secs(5),
         panic_on_trigger: true,
         subscribed_idle_tasks: enumset::enum_set!(esp_idf_hal::cpu::Core::Core0),
     };
@@ -83,7 +86,7 @@ fn main() -> anyhow::Result<()> {
 
     log::info!("WiFi Config: {wifi_config:?}");
 
-    let mut _server = if let Some(config) = wifi_config {
+    let mut server = if let Some(config) = wifi_config {
         log::info!("Connected to SSID: {}", config.ssid);
         log::info!("IP: {}", wifi.sta_netif().get_ip_info()?.ip);
         httpd::start_http_server()?
@@ -93,6 +96,25 @@ fn main() -> anyhow::Result<()> {
         log::info!("AP Mode - {:?}", wifi.ap_netif());
         httpd::start_http_server()?
     };
+
+    // Add adc debug handlers
+    server.fn_handler("/adc_debug/on", http::Method::Get, |r| {
+        adc::ADC_DEBUG
+            .replace(true)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let mut response = r.into_ok_response()?;
+        response.write("ADC_DEBUG: On\n".as_bytes())?;
+        Ok::<(), anyhow::Error>(())
+    })?;
+
+    server.fn_handler("/adc_debug/off", http::Method::Get, |r| {
+        adc::ADC_DEBUG
+            .replace(false)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let mut response = r.into_ok_response()?;
+        response.write("ADC_DEBUG: Off\n".as_bytes())?;
+        Ok::<(), anyhow::Error>(())
+    })?;
 
     // ADC Channel
     let (adc_tx, adc_rx) = mpsc::channel();
@@ -107,7 +129,6 @@ fn main() -> anyhow::Result<()> {
                 peripherals.adc1,
                 peripherals.pins.gpio4,
                 adc_tx,
-                false,
             )
         })
         .expect("Error starting adc_task:");
@@ -122,7 +143,6 @@ fn main() -> anyhow::Result<()> {
 
     // Dont configure watchdog until we have setup background tasks
     let mut watchdog = twdt_driver.watch_current_task()?;
-    let mut count = 0_usize;
 
     loop {
         // Check tasks still running - restart if not
@@ -130,7 +150,7 @@ fn main() -> anyhow::Result<()> {
             log::error!("Task Failed - Restarting");
             esp_idf_hal::reset::restart();
         }
-        match adc_rx.recv_timeout(Duration::from_millis(1000)) {
+        match adc_rx.recv_timeout(Duration::from_millis(2000)) {
             Ok(msg) => match msg {
                 adc::RingMessage::RingStart => {
                     log::info!("adc_rx :: {msg:?}");
@@ -142,30 +162,13 @@ fn main() -> anyhow::Result<()> {
                     ring_led.set_high()?;
                     alert_tx.send(alert::AlertMessage::RingStop)?;
                 }
-                // We only get stats messages if enabled when starting adc_task
-                adc::RingMessage::Stats(s) => {
-                    log::info!(
-                        "[{}/{:06}] Mean: {:.4} :: Std Dev: {:.4}/{:.4} :: Ring: {}",
-                        s.count,
-                        s.elapsed,
-                        s.mean,
-                        s.stddev,
-                        s.threshold,
-                        s.ring
-                    );
-                }
             },
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(e) => log::error!("ERROR :: adc_rx :: {e:?}"),
         }
-        count += 1;
-        if count % 60 == 0 {
-            // Update status every 60 secs
-            log::info!("adc_rx :: tick");
-            status.set(rgb::BLUE)?;
-            status.set(rgb::OFF)?;
-            alert_tx.send(alert::AlertMessage::StatusUpdate)?;
-        }
+        alert_tx.send(alert::AlertMessage::Status)?;
+        status.set(rgb::BLUE)?;
+        status.set(rgb::OFF)?;
 
         // Update watchdog
         watchdog.feed()?
