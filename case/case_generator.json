@@ -1,7 +1,7 @@
 {
     "fileFormatVersion": "1",
     "parameterSets": {
-        "New set 1": {
+        "Doorbell Case": {
             "back_cutout": "false",
             "back_cutout_offset": "[0, 0]",
             "back_cutout_radius": "2.5",
@@ -10,10 +10,10 @@
             "box_length": "100",
             "box_width": "75",
             "corner_radius": "5",
-            "front_cutout": "false",
-            "front_cutout_offset": "[0, 0]",
+            "front_cutout": "true",
+            "front_cutout_offset": "[0, 7]",
             "front_cutout_radius": "2.5",
-            "front_cutout_size": "[5, 5]",
+            "front_cutout_size": "[50, 20]",
             "left_cutout": "false",
             "left_cutout_offset": "[0, 0]",
             "left_cutout_radius": "2.5",
@@ -22,8 +22,8 @@
             "lid_height": "2",
             "mounting_hole_offset": "0.14999999999999999",
             "mounting_holes": "true",
-            "mounting_screw_diameter": "2.5",
-            "mounting_top_diameter": "5",
+            "mounting_screw_diameter": "4",
+            "mounting_top_diameter": "8",
             "num_ventilation_holes": "5",
             "pcb_hole_diameter": "1.5",
             "pcb_length": "65",

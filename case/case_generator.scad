@@ -194,9 +194,9 @@ module mounting_hole(x,y) {
             linear_extrude(wall_thickness + 0.02)
                 rotate([0,0,180])
                 union() {
-                    circle(d = mounting_top_diameter, $fn=10);
+                    circle(d = mounting_top_diameter, $fn=20);
                     translate([mounting_top_diameter/2,0,0])
-                        offset(r = mounting_screw_diameter/2, $fn = 10) 
+                        offset(r = mounting_screw_diameter/2, $fn = 20) 
                             square([mounting_screw_diameter,0.1], center= true);
                 }
 }
