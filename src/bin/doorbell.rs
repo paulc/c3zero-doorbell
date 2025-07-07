@@ -151,6 +151,8 @@ fn main() -> anyhow::Result<()> {
             log::error!("Task Failed - Restarting");
             esp_idf_hal::reset::restart();
         }
+
+        // Wait for ADC messages
         match adc_rx.recv_timeout(Duration::from_millis(1000)) {
             Ok(msg) => match msg {
                 adc::RingMessage::RingStart(ref s) => {
@@ -167,15 +169,18 @@ fn main() -> anyhow::Result<()> {
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(e) => log::error!("ERROR :: adc_rx :: {e:?}"),
         }
+
         // Send status message every 30 secs
         if count % 30 == 0 {
             alert_tx.send(alert::AlertMessage::Status)?;
         }
 
+        // Flash LED
         status.set(rgb::BLUE)?;
         status.set(rgb::OFF)?;
 
         count += 1;
+
         // Update watchdog
         watchdog.feed()?
     }
