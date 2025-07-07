@@ -44,7 +44,7 @@ fn main() -> anyhow::Result<()> {
     let ws2812 = peripherals.pins.gpio10.downgrade_output();
     let channel = peripherals.rmt.channel0;
     let mut status = ws2812::Ws2812RmtSingle::new(ws2812, channel, rgb::RgbLayout::Rgb)?;
-    status.set(rgb::OFF)?;
+    status.set(rgb::RED)?;
 
     // Ring led
     let mut ring_led = PinDriver::output(peripherals.pins.gpio6)?;
@@ -143,6 +143,7 @@ fn main() -> anyhow::Result<()> {
 
     // Dont configure watchdog until we have setup background tasks
     let mut watchdog = twdt_driver.watch_current_task()?;
+    let mut count: u64 = 0;
 
     loop {
         // Check tasks still running - restart if not
@@ -150,7 +151,7 @@ fn main() -> anyhow::Result<()> {
             log::error!("Task Failed - Restarting");
             esp_idf_hal::reset::restart();
         }
-        match adc_rx.recv_timeout(Duration::from_millis(2000)) {
+        match adc_rx.recv_timeout(Duration::from_millis(1000)) {
             Ok(msg) => match msg {
                 adc::RingMessage::RingStart(ref s) => {
                     log::info!("adc_rx :: {msg:?}");
@@ -166,10 +167,15 @@ fn main() -> anyhow::Result<()> {
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(e) => log::error!("ERROR :: adc_rx :: {e:?}"),
         }
-        alert_tx.send(alert::AlertMessage::Status)?;
+        // Send status message every 30 secs
+        if count % 30 == 0 {
+            alert_tx.send(alert::AlertMessage::Status)?;
+        }
+
         status.set(rgb::BLUE)?;
         status.set(rgb::OFF)?;
 
+        count += 1;
         // Update watchdog
         watchdog.feed()?
     }

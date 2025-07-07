@@ -10,6 +10,17 @@ use crate::wifi;
 
 use serde::Serialize;
 
+// MQTT Client
+const MQTT_URL: &str = "mqtt://192.168.60.1:1883";
+const MQTT_CLIENT_ID: &str = "Esp32c3-Doorbell";
+const MQTT_TOPIC: &str = "doorbell/ring";
+const MQTT_TOPIC_STATUS: &str = "doorbell/status";
+
+const URL: &str = "https://api.pushover.net/1/messages.json";
+const TOKEN: &str = "amfa9dzeck8bongtab3nrta3xux3hj";
+const USER: &str = "uomfetdtawqotwp3ii9jpf4buys3p4";
+const MESSAGE: &str = "DOORBELL";
+
 #[derive(Debug)]
 pub enum AlertMessage {
     RingStart(adc::Stats),
@@ -42,7 +53,7 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
     send_status(&mut mqtt_client);
 
     match mqtt_client.enqueue(MQTT_TOPIC, QoS::AtMostOnce, true, "OFF".as_bytes()) {
-        Ok(id) => log::info!("MQTT Send: id={id}"),
+        Ok(_id) => log::info!("MQTT Send: {MQTT_TOPIC} = OFF"),
         Err(e) => log::error!("MQTT Error; {e}"),
     }
 
@@ -51,7 +62,7 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
             Ok(AlertMessage::RingStart(s)) => {
                 // Send MQTT Update
                 match mqtt_client.enqueue(MQTT_TOPIC, QoS::AtMostOnce, true, "ON".as_bytes()) {
-                    Ok(_id) => log::info!("MQTT Send: {MQTT_TOPIC}"),
+                    Ok(_id) => log::info!("MQTT Send: {MQTT_TOPIC} = ON"),
                     Err(e) => log::error!("MQTT Error: {e}"),
                 }
 
@@ -74,7 +85,7 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
             Ok(AlertMessage::RingStop) => {
                 // Send MQTT Update
                 match mqtt_client.enqueue(MQTT_TOPIC, QoS::AtMostOnce, true, "OFF".as_bytes()) {
-                    Ok(id) => log::info!("MQTT Send: id={id}"),
+                    Ok(_id) => log::info!("MQTT Send: {MQTT_TOPIC} = OFF"),
                     Err(e) => log::error!("MQTT Error; {e}"),
                 }
             }
@@ -85,12 +96,6 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
         }
     }
 }
-
-// MQTT Client
-const MQTT_URL: &str = "mqtt://192.168.60.1:1883";
-const MQTT_CLIENT_ID: &str = "Esp32c3-Doorbell";
-const MQTT_TOPIC: &str = "doorbell/ring";
-const MQTT_TOPIC_STATUS: &str = "doorbell/status";
 
 fn send_status(mqtt: &mut EspMqttClient<'static>) {
     let alarm_ip = if let Ok(Some(ip)) = wifi::IP_INFO.get_cloned() {
@@ -125,11 +130,6 @@ fn send_status(mqtt: &mut EspMqttClient<'static>) {
         Err(e) => log::error!("MQTT Error: {e}"),
     }
 }
-
-const URL: &str = "https://api.pushover.net/1/messages.json";
-const TOKEN: &str = "amfa9dzeck8bongtab3nrta3xux3hj";
-const USER: &str = "uomfetdtawqotwp3ii9jpf4buys3p4";
-const MESSAGE: &str = "DOORBELL";
 
 fn send_pushover(config: &HttpConfiguration) -> anyhow::Result<()> {
     let mut client = HttpClient::wrap(EspHttpConnection::new(config)?);
