@@ -12,13 +12,13 @@ pub struct Rgb {
 }
 
 pub const OFF: Rgb = Rgb { r: 0, g: 0, b: 0 };
-pub const RED: Rgb = Rgb { r: 255, g: 0, b: 0 };
-pub const GREEN: Rgb = Rgb { r: 0, g: 255, b: 0 };
-pub const BLUE: Rgb = Rgb { r: 0, g: 0, b: 255 };
+pub const RED: Rgb = Rgb { r: 63, g: 0, b: 0 };
+pub const GREEN: Rgb = Rgb { r: 0, g: 63, b: 0 };
+pub const BLUE: Rgb = Rgb { r: 0, g: 0, b: 63 };
 pub const WHITE: Rgb = Rgb {
-    r: 255,
-    g: 255,
-    b: 255,
+    r: 63,
+    g: 63,
+    b: 63,
 };
 
 impl Rgb {
