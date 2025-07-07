@@ -10,15 +10,21 @@ use crate::wifi;
 
 use serde::Serialize;
 
+// XXX Development version - use dev MQTT server & dont send Pushover notifications
+
 // MQTT Client
-const MQTT_URL: &str = "mqtt://192.168.60.1:1883";
-const MQTT_CLIENT_ID: &str = "Esp32c3-Doorbell";
+const MQTT_URL: &str = "mqtt://192.168.60.1:10883";
+const MQTT_CLIENT_ID: &str = "Esp32c3-Doorbell-Dev";
 const MQTT_TOPIC: &str = "doorbell/ring";
 const MQTT_TOPIC_STATUS: &str = "doorbell/status";
 
+#[allow(dead_code)]
 const URL: &str = "https://api.pushover.net/1/messages.json";
+#[allow(dead_code)]
 const TOKEN: &str = "amfa9dzeck8bongtab3nrta3xux3hj";
+#[allow(dead_code)]
 const USER: &str = "uomfetdtawqotwp3ii9jpf4buys3p4";
+#[allow(dead_code)]
 const MESSAGE: &str = "DOORBELL";
 
 #[derive(Debug)]
@@ -28,6 +34,7 @@ pub enum AlertMessage {
     Status,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Debug)]
 struct PushoverMessage<'a> {
     token: &'a str,
@@ -37,7 +44,7 @@ struct PushoverMessage<'a> {
 
 pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
     // HTTP Client
-    let http_config = &HttpConfiguration {
+    let _http_config = &HttpConfiguration {
         crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
         ..Default::default()
     };
@@ -67,10 +74,10 @@ pub fn alert_task(rx: mpsc::Receiver<AlertMessage>) -> anyhow::Result<()> {
                 }
 
                 // Send Pushover Webhook
-                match send_pushover(http_config) {
-                    Ok(_) => {}
-                    Err(e) => log::error!("Error sending Pushover request: {e}"),
-                }
+                // match send_pushover(http_config) {
+                //     Ok(_) => {}
+                //     Err(e) => log::error!("Error sending Pushover request: {e}"),
+                // }
 
                 match mqtt_client.enqueue(
                     &format!("{MQTT_TOPIC_STATUS}/ring_stats"),
@@ -131,7 +138,7 @@ fn send_status(mqtt: &mut EspMqttClient<'static>) {
     }
 }
 
-fn send_pushover(config: &HttpConfiguration) -> anyhow::Result<()> {
+fn _send_pushover(config: &HttpConfiguration) -> anyhow::Result<()> {
     let mut client = HttpClient::wrap(EspHttpConnection::new(config)?);
 
     let payload = PushoverMessage {
