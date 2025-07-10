@@ -21,7 +21,6 @@ impl MqttManager {
             url,
             &MqttClientConfiguration {
                 client_id: Some(&client_id),
-
                 ..Default::default()
             },
             move |e| {
