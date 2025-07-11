@@ -1,5 +1,7 @@
 use core::time::Duration;
 
+use std::sync::{mpsc, Arc, Mutex};
+
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::hal::peripherals::Peripherals;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
@@ -14,8 +16,8 @@ const AP_SSID: &str = "ESP32C3-AP";
 const AP_PASSWORD: &str = "password";
 
 const MQTT_URL: &str = "mqtt://192.168.60.1:10883/";
-const MQTT_CLIENT_ID: &str = "esp-mqtt-demo";
 const MQTT_TOPIC: &str = "esp-mqtt-demo";
+//const MQTT_CLIENT_ID: &str = "esp-mqtt-demo";
 
 fn main() -> anyhow::Result<()> {
     esp_idf_svc::sys::link_patches();
@@ -44,25 +46,59 @@ fn main() -> anyhow::Result<()> {
     )?;
     log::info!("WifiState: {wifi_state:?}");
 
-    let mut mqtt = mqtt::MqttManager::new(MQTT_URL, MQTT_CLIENT_ID)?;
-    mqtt.subscribe(MQTT_TOPIC)?;
+    let (mqtt_tx, mqtt_rx) = mpsc::channel::<mqtt::MqttMessage>();
+    let mqtt = Arc::new(Mutex::new(mqtt::MqttManager::new(MQTT_URL, None, mqtt_tx)?));
+    {
+        let mut mqtt = mqtt.lock().unwrap();
+        let _ = mqtt.subscribe(MQTT_TOPIC);
+        let _ = mqtt.subscribe("test/#");
+    }
+
+    let mqtt_c = mqtt.clone();
+    std::thread::spawn(move || {
+        let mut count = 0_u64;
+        loop {
+            let msg = format!("Test:: {count}");
+            {
+                let mut mqtt = mqtt_c.lock().unwrap();
+                let _ = mqtt.publish(MQTT_TOPIC, msg.as_bytes(), false);
+            }
+            std::thread::sleep(Duration::from_millis(5000));
+            count += 1;
+        }
+    });
 
     loop {
-        mqtt.publish(MQTT_TOPIC, "TEST".as_bytes(), false)?;
-        std::thread::sleep(Duration::from_millis(1000));
+        match mqtt_rx.recv_timeout(Duration::from_millis(1000)) {
+            Ok(mqtt::MqttMessage::Message(topic, message)) => {
+                log::info!("[RX] {topic} >> {}", String::from_utf8_lossy(&message))
+            }
+            Ok(mqtt::MqttMessage::Reconnected) => {
+                // Resubscribe
+                log::info!("Reconnected - re-subscribing");
+                let mut mqtt = mqtt.lock().unwrap();
+                mqtt.subscribe(MQTT_TOPIC)?;
+                mqtt.subscribe("test/#")?;
+            }
+            _ => {}
+        }
     }
 }
 
 mod mqtt {
 
     use esp_idf_svc::mqtt::client::{
-        EspMqttClient,
-        MqttClientConfiguration,
-        QoS, // Details, EspMqttClient, EspMqttConnection, EventPayload, MqttClientConfiguration, QoS,
+        Details, EspMqttClient, EventPayload, MqttClientConfiguration, QoS,
     };
 
     use core::time::Duration;
-    use log::*;
+    use std::cmp::max;
+    use std::sync::mpsc;
+
+    pub enum MqttMessage {
+        Message(String, Vec<u8>),
+        Reconnected,
+    }
 
     pub struct MqttManager {
         client: EspMqttClient<'static>,
@@ -70,11 +106,15 @@ mod mqtt {
     }
 
     impl MqttManager {
-        pub fn new(url: &str, client_id: &str) -> anyhow::Result<Self> {
+        pub fn new(
+            url: &str,
+            client_id: Option<&str>,
+            tx: mpsc::Sender<MqttMessage>,
+        ) -> anyhow::Result<Self> {
             let (client, mut connection) = EspMqttClient::new(
                 url,
                 &MqttClientConfiguration {
-                    client_id: Some(client_id),
+                    client_id,
                     keep_alive_interval: Some(Duration::from_secs(30)),
                     ..Default::default()
                 },
@@ -84,11 +124,34 @@ mod mqtt {
             let _conn_handle = std::thread::Builder::new()
                 .stack_size(8192)
                 .spawn(move || {
-                    info!("MQTT Listening for messages");
+                    let mut has_disconnected = false;
+                    log::info!("MQTT Listening for messages");
                     while let Ok(event) = connection.next() {
-                        info!("[Queue] Event: {}", event.payload());
+                        log::info!("[Queue] Event: {}", event.payload());
+                        match event.payload() {
+                            EventPayload::Received {
+                                topic: Some(t),
+                                details: Details::Complete,
+                                data,
+                                ..
+                            } => tx
+                                .send(MqttMessage::Message(t.to_owned(), data.to_vec()))
+                                .unwrap_or(()),
+                            EventPayload::Connected(_) => {
+                                if has_disconnected {
+                                    log::info!("MQTT Reconnected");
+                                    has_disconnected = false;
+                                    tx.send(MqttMessage::Reconnected).unwrap_or(())
+                                }
+                            }
+                            EventPayload::Disconnected => {
+                                log::info!("MQTT disconnected");
+                                has_disconnected = true;
+                            }
+                            _ => {}
+                        }
                     }
-                    info!("Connection closed");
+                    log::info!("Connection closed");
                 })?;
 
             // Allow thread to start processing events before returning
@@ -101,17 +164,17 @@ mod mqtt {
         }
 
         pub fn subscribe(&mut self, topic: &str) -> anyhow::Result<()> {
-            loop {
+            for i in 0..5 {
                 if let Err(e) = self.client.subscribe(topic, QoS::AtMostOnce) {
-                    error!("Failed to subscribe to topic \"{topic}\": {e}, retrying...");
-                    // Re-try in 0.5s
-                    std::thread::sleep(Duration::from_millis(500));
+                    log::error!("Failed to subscribe to topic: {topic} [{e}], retrying...");
+                    // Back off retry
+                    std::thread::sleep(Duration::from_millis(max(500, 500 * i * i)));
                     continue;
                 };
-                info!("Subscribed to topic \"{topic}\"");
-                break;
+                log::info!("Subscribed: {topic}");
+                return Ok(());
             }
-            Ok(())
+            Err(anyhow::anyhow!("Error subscribing to topic: {topic}"))
         }
 
         pub fn publish(
