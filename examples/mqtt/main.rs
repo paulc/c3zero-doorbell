@@ -8,10 +8,11 @@ use esp_idf_svc::http::Method;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::EspWifi;
 
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use doorbell::mqtt::{MqttManager, MqttMessage};
 use doorbell::nvs::NVStore;
 use doorbell::web::{NavBar, NavLink, WebServer};
 use doorbell::wifi::{APConfig, APStore, WifiManager};
@@ -19,7 +20,7 @@ use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 
 mod home_page;
 mod led_task;
-mod mqtt;
+// mod mqtt;
 
 const AP_SSID: &str = "ESP32C3-AP";
 const AP_PASSWORD: &str = "password";
@@ -28,6 +29,9 @@ const NVS_NAMESPACE: &str = "DOORBELL";
 
 const WATCHDOG_TIMEOUT: u64 = 10;
 const RESET_THRESHOLD: u64 = 5;
+
+const MQTT_URL: &str = "mqtt://192.168.60.1:10883";
+const MQTT_RING_TOPIC: &str = "doorbell/ring";
 
 // Static NavBar
 pub const NAVBAR: NavBar = NavBar {
@@ -110,40 +114,36 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     // Create MQTT client
-    let (mqtt_tx, mqtt_rx) = mpsc::channel::<(String, Vec<u8>)>();
+    let (mqtt_tx, mqtt_rx) = mpsc::channel::<MqttMessage>();
+    let mqtt = Arc::new(Mutex::new(MqttManager::new(MQTT_URL, None, mqtt_tx)?));
+    let mqtt_c = mqtt.clone();
 
-    // Work-around for MQTT connection bug
-    let mut mqtt: Option<doorbell::mqtt::MqttManager> = None;
-    for n in 0..10 {
-        let tx = mqtt_tx.clone();
-        if let Ok(m) = mqtt::mqtt_handler_chan(tx) {
-            mqtt = Some(m);
-            break;
-        } else {
-            log::info!("Sleeping: {}s", std::cmp::max(1, n * n));
-            std::thread::sleep(Duration::from_secs(std::cmp::max(1, n * n)));
-            log::error!("MQTT Error - trying to reconnect...");
-        }
+    if let Ok(mut mqtt) = mqtt.lock() {
+        mqtt.subscribe(MQTT_RING_TOPIC)?;
     }
 
     // Handle MQTT messages
     let _mqtt_t = thread::spawn(move || loop {
-        match mqtt_rx.recv() {
-            Ok((topic, data)) => {
+        match mqtt_rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(MqttMessage::Message(topic, data)) => {
                 let data = String::from_utf8_lossy(&data).to_string();
                 log::info!("mqtt_rx: {topic} : {data}");
-                match data.as_str() {
-                    "ON" => led_tx.send(true).unwrap_or(()),
-                    "OFF" => led_tx.send(false).unwrap_or(()),
-                    _ => {}
+                if topic == MQTT_RING_TOPIC {
+                    match data.as_str() {
+                        "ON" => led_tx.send(true).unwrap_or(()),
+                        "OFF" => led_tx.send(false).unwrap_or(()),
+                        _ => {}
+                    }
                 }
             }
-            Err(e) => {
-                // Channel closed - restart
-                log::error!("Error: mqtt_rx.recv [{e}]");
-                thread::sleep(Duration::from_millis(2000));
-                esp_idf_hal::reset::restart();
+            Ok(MqttMessage::Reconnected) => {
+                log::info!("MQTT re-connected: resubscribing");
+                if let Ok(mut mqtt) = mqtt_c.lock() {
+                    mqtt.subscribe(MQTT_RING_TOPIC)
+                        .expect("Failed to resubscribe to MQTT_RING_TOPIC");
+                }
             }
+            _ => {}
         }
     });
 
@@ -169,8 +169,12 @@ fn main() -> anyhow::Result<()> {
             esp_idf_hal::reset::restart();
         }
 
-        if let Some(ref mut mqtt) = mqtt {
-            mqtt.send("alarm/counter", format!("{count}").as_bytes(), false)?;
+        if let Ok(mut mqtt) = mqtt.lock() {
+            mqtt.publish(
+                "alarm/counter",
+                &format!("{count}").as_bytes().to_vec(),
+                false,
+            )?;
         }
 
         // Update watchdog
