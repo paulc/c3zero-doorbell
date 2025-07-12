@@ -20,7 +20,6 @@ use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 
 mod home_page;
 mod led_task;
-// mod mqtt;
 
 const AP_SSID: &str = "ESP32C3-AP";
 const AP_PASSWORD: &str = "password";
@@ -162,11 +161,7 @@ fn main() -> anyhow::Result<()> {
             esp_idf_hal::reset::restart();
         }
 
-        StaticMqttManager::publish(
-            "alarm/counter",
-            &format!("{count}").as_bytes().to_vec(),
-            false,
-        )?;
+        StaticMqttManager::publish("alarm/counter", format!("{count}").as_bytes(), false)?;
 
         // Update watchdog
         watchdog.feed()?;
