@@ -8,11 +8,11 @@ use esp_idf_svc::http::Method;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::EspWifi;
 
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use doorbell::mqtt::{MqttManager, MqttMessage};
+use doorbell::mqtt::{MqttMessage, StaticMqttManager};
 use doorbell::nvs::NVStore;
 use doorbell::web::{NavBar, NavLink, WebServer};
 use doorbell::wifi::{APConfig, APStore, WifiManager};
@@ -113,14 +113,9 @@ fn main() -> anyhow::Result<()> {
         home_page::make_handler(&wifi_state, NAVBAR),
     )?;
 
-    // Create MQTT client
-    let (mqtt_tx, mqtt_rx) = mpsc::channel::<MqttMessage>();
-    let mqtt = Arc::new(Mutex::new(MqttManager::new(MQTT_URL, None, mqtt_tx)?));
-    let mqtt_c = mqtt.clone();
-
-    if let Ok(mut mqtt) = mqtt.lock() {
-        mqtt.subscribe(MQTT_RING_TOPIC)?;
-    }
+    // Initialise static MQTT_MANAGER
+    let mqtt_rx = StaticMqttManager::init(MQTT_URL, None)?;
+    StaticMqttManager::subscribe(MQTT_RING_TOPIC)?;
 
     // Handle MQTT messages
     let _mqtt_t = thread::spawn(move || loop {
@@ -138,10 +133,8 @@ fn main() -> anyhow::Result<()> {
             }
             Ok(MqttMessage::Reconnected) => {
                 log::info!("MQTT re-connected: resubscribing");
-                if let Ok(mut mqtt) = mqtt_c.lock() {
-                    mqtt.subscribe(MQTT_RING_TOPIC)
-                        .expect("Failed to resubscribe to MQTT_RING_TOPIC");
-                }
+                StaticMqttManager::subscribe(MQTT_RING_TOPIC)
+                    .expect("Failed to resubscribe to MQTT_RING_TOPIC");
             }
             _ => {}
         }
@@ -169,13 +162,11 @@ fn main() -> anyhow::Result<()> {
             esp_idf_hal::reset::restart();
         }
 
-        if let Ok(mut mqtt) = mqtt.lock() {
-            mqtt.publish(
-                "alarm/counter",
-                &format!("{count}").as_bytes().to_vec(),
-                false,
-            )?;
-        }
+        StaticMqttManager::publish(
+            "alarm/counter",
+            &format!("{count}").as_bytes().to_vec(),
+            false,
+        )?;
 
         // Update watchdog
         watchdog.feed()?;

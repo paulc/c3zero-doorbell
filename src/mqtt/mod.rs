@@ -3,13 +3,52 @@ use esp_idf_svc::mqtt::client::{
 };
 
 use core::time::Duration;
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 
 const MQTT_RETRY_COUNT: u32 = 5;
 
 pub enum MqttMessage {
     Message(String, Vec<u8>),
     Reconnected,
+}
+
+static MQTT_MANAGER: Mutex<Option<MqttManager>> = Mutex::new(None);
+
+pub struct StaticMqttManager {}
+
+impl StaticMqttManager {
+    pub fn init(url: &str, client_id: Option<&str>) -> anyhow::Result<mpsc::Receiver<MqttMessage>> {
+        let (tx, rx) = mpsc::channel::<MqttMessage>();
+        let mqtt_manager = MqttManager::new(url, client_id, tx)?;
+        MQTT_MANAGER
+            .replace(Some(mqtt_manager))
+            .map_err(|e| anyhow::anyhow!("Mutex Error: {e}"))?;
+        Ok(rx)
+    }
+    pub fn subscribe(topic: &str) -> anyhow::Result<()> {
+        MQTT_MANAGER
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Mutex Error: {e}"))?
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("MQTT_MANAGER not initialised"))?
+            .subscribe(topic)
+    }
+    pub fn unsubscribe(topic: &str) -> anyhow::Result<()> {
+        MQTT_MANAGER
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Mutex Error: {e}"))?
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("MQTT_MANAGER not initialised"))?
+            .unsubscribe(topic)
+    }
+    pub fn publish(topic: &str, message: &[u8], retain: bool) -> anyhow::Result<u32> {
+        MQTT_MANAGER
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Mutex Error: {e}"))?
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("MQTT_MANAGER not initialised"))?
+            .publish(topic, message, retain)
+    }
 }
 
 pub struct MqttManager {
@@ -105,8 +144,8 @@ impl MqttManager {
             .enqueue(topic, QoS::AtMostOnce, retain, message)
             .map_err(|e| anyhow::anyhow!("MQTT Error: {e}"))
     }
+}
 
-    pub fn check_url(url: &str) -> bool {
-        EspMqttClient::new(url, &Default::default()).is_ok()
-    }
+pub fn check_mqtt_url(url: &str) -> bool {
+    EspMqttClient::new(url, &Default::default()).is_ok()
 }
