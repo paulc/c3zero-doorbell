@@ -12,7 +12,6 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use doorbell::mqtt::{MqttMessage, StaticMqttManager};
 use doorbell::nvs::NVStore;
 use doorbell::web::{NavBar, NavLink, WebServer};
 use doorbell::wifi::{APConfig, APStore, WifiManager};
@@ -20,6 +19,7 @@ use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 
 mod home_page;
 mod led_task;
+mod mqtt_task;
 
 const AP_SSID: &str = "ESP32C3-AP";
 const AP_PASSWORD: &str = "password";
@@ -29,9 +29,6 @@ const NVS_NAMESPACE: &str = "DOORBELL";
 const WATCHDOG_TIMEOUT: u64 = 10;
 const RESET_THRESHOLD: u64 = 5;
 
-const MQTT_URL: &str = "mqtt://192.168.60.1:10883";
-const MQTT_RING_TOPIC: &str = "doorbell/ring";
-
 // Static NavBar
 pub const NAVBAR: NavBar = NavBar {
     title: "MQTT Alarm",
@@ -39,6 +36,10 @@ pub const NAVBAR: NavBar = NavBar {
         NavLink {
             url: "/wifi",
             label: "Wifi Configuration",
+        },
+        NavLink {
+            url: "/mqtt",
+            label: "MQTT Configuration",
         },
         NavLink {
             url: "/reset_page",
@@ -112,37 +113,20 @@ fn main() -> anyhow::Result<()> {
         home_page::make_handler(&wifi_state, NAVBAR),
     )?;
 
-    // Initialise static MQTT_MANAGER
-    let mqtt_rx = StaticMqttManager::init(MQTT_URL, None)?;
-    StaticMqttManager::subscribe(MQTT_RING_TOPIC)?;
-
-    // Handle MQTT messages
-    let _mqtt_t = thread::spawn(move || loop {
-        match mqtt_rx.recv_timeout(Duration::from_secs(2)) {
-            Ok(MqttMessage::Message(topic, data)) => {
-                let data = String::from_utf8_lossy(&data).to_string();
-                log::info!("mqtt_rx: {topic} : {data}");
-                if topic == MQTT_RING_TOPIC {
-                    match data.as_str() {
-                        "ON" => led_tx.send(true).unwrap_or(()),
-                        "OFF" => led_tx.send(false).unwrap_or(()),
-                        _ => {}
-                    }
-                }
-            }
-            Ok(MqttMessage::Reconnected) => {
-                log::info!("MQTT re-connected: resubscribing");
-                StaticMqttManager::subscribe(MQTT_RING_TOPIC)
-                    .expect("Failed to resubscribe to MQTT_RING_TOPIC");
-            }
+    let mqtt = mqtt_task::MQTTTask::init()?;
+    mqtt.add_handlers(&mut web, NAVBAR)?;
+    mqtt.run(
+        move |s: &str| match s {
+            "ON" => led_tx.send(true).unwrap_or(()),
+            "OFF" => led_tx.send(false).unwrap_or(()),
             _ => {}
-        }
-    });
+        },
+        &wifi_state.to_string(),
+    )?;
 
     // Start watchdog after initialisation
     let mut watchdog = twdt_driver.watch_current_task()?;
 
-    let mut count = 0_u64;
     let mut reset_count = 0_u64;
 
     loop {
@@ -161,11 +145,7 @@ fn main() -> anyhow::Result<()> {
             esp_idf_hal::reset::restart();
         }
 
-        StaticMqttManager::publish("alarm/counter", format!("{count}").as_bytes(), false)?;
-
         // Update watchdog
         watchdog.feed()?;
-
-        count += 1;
     }
 }

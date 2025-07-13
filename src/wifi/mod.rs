@@ -28,6 +28,24 @@ pub enum WifiState {
     AP(APConfig, IpInfo),
 }
 
+impl std::fmt::Display for WifiState {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            WifiState::NotConnected => write!(f, "Not Connected"),
+            WifiState::Station(config, ip_info) => {
+                write!(f, "Station Mode: SSID: {}, IP: {}", config.ssid, ip_info.ip)
+            }
+            WifiState::AP(config, ip_info) => {
+                write!(
+                    f,
+                    "Access Point Mode: SSID: {}, IP: {}",
+                    config.ssid, ip_info.ip
+                )
+            }
+        }
+    }
+}
+
 impl WifiState {
     pub fn display_fields(&self) -> Vec<(String, String)> {
         let key: [&str; 3] = ["Wifi State", "SSID", "IP Address"];

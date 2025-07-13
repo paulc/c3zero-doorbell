@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ title }}{% endblock %}
+{% block title %}MQTT Config{% endblock %}
 
 {% block body %}
 <h1>{{ title }}</h1>
@@ -38,14 +38,14 @@
 
 {% block navbar %}
     <nav class="navbar">
-      <a href="/" class="navbar-brand">{{ crate::TITLE }}</a>
+      <a href="/" class="navbar-brand">{{ navbar.title }}</a>
 
         <!-- Mobile menu button -->
         <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
 
         <!-- Navigation links -->
         <ul class="navbar-links" id="navbarLinks">
-          {% for link in crate::NAVBAR_LINKS %}
+          {% for link in navbar.links %}
             <li class="nav-item">
               <a href="{{ link.url }}" class="nav-link">{{ link.label }}</a>
             </li>
