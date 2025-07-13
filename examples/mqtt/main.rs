@@ -87,7 +87,7 @@ fn main() -> anyhow::Result<()> {
     led.set(colour::OFF)?;
 
     // LED task
-    let (led_tx, led_rx) = mpsc::channel::<bool>();
+    let (led_tx, led_rx) = mpsc::channel::<led_task::LedMessage>();
     let _led_task = thread::spawn(move || led_task::led_task(led, led_rx));
 
     // Try to connect to known AP (or start local AP)
@@ -115,18 +115,24 @@ fn main() -> anyhow::Result<()> {
 
     let mqtt = mqtt_task::MQTTTask::init()?;
     mqtt.add_handlers(&mut web, NAVBAR)?;
-    mqtt.run(
-        move |s: &str| match s {
-            "ON" => led_tx.send(true).unwrap_or(()),
-            "OFF" => led_tx.send(false).unwrap_or(()),
-            _ => {}
-        },
-        &wifi_state.to_string(),
-    )?;
+    if mqtt.is_enabled() {
+        let led_tx = led_tx.clone();
+
+        match mqtt.run(
+            move |s: &str| match s {
+                "ON" => led_tx.send(led_task::LedMessage::Ring(true)).unwrap_or(()),
+                "OFF" => led_tx.send(led_task::LedMessage::Ring(false)).unwrap_or(()),
+                _ => {}
+            },
+            &wifi_state.to_string(),
+        ) {
+            Ok(_) => log::info!("mqtt_task running"),
+            Err(e) => log::info!("mqtt_task error [{e}]"),
+        }
+    }
 
     // Start watchdog after initialisation
     let mut watchdog = twdt_driver.watch_current_task()?;
-
     let mut reset_count = 0_u64;
 
     loop {
@@ -144,6 +150,8 @@ fn main() -> anyhow::Result<()> {
             log::error!("FATAL: RESET_THRESHOLD - Rebooting");
             esp_idf_hal::reset::restart();
         }
+
+        led_tx.send(led_task::LedMessage::Flash)?;
 
         // Update watchdog
         watchdog.feed()?;

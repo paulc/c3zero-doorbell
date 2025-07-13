@@ -28,6 +28,10 @@ impl MQTTTask {
         Ok(Self(NVStore::get("mqtt")?.unwrap_or_default()))
     }
 
+    pub fn is_enabled(&self) -> bool {
+        self.0.enabled
+    }
+
     pub fn run<F>(&self, f_ring: F, ip: &str) -> anyhow::Result<()>
     where
         F: Fn(&str) + Send + 'static,
@@ -35,6 +39,8 @@ impl MQTTTask {
         if self.0.enabled {
             let mqtt_rx = StaticMqttManager::init(&self.0.url, Some(&self.0.client_id))?;
             let ring_topic = self.0.ring_topic.clone();
+
+            log::info!("Starting MQTT Connection Thread");
             let _connection_t = thread::spawn(move || loop {
                 match mqtt_rx.recv_timeout(Duration::from_secs(2)) {
                     Ok(MqttMessage::Message(topic, data)) => {
@@ -55,6 +61,7 @@ impl MQTTTask {
 
             let ip_topic = format!("{}/ip", self.0.status_topic);
             let ip = ip.to_owned();
+            log::info!("Starting MQTT Status Thread");
             let _update_t = thread::spawn(move || loop {
                 let _ = StaticMqttManager::publish(&ip_topic, ip.as_bytes(), false);
                 thread::sleep(Duration::from_secs(30));

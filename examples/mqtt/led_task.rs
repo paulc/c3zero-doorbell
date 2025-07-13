@@ -3,13 +3,18 @@ use std::time::Duration;
 
 use doorbell::ws2812::{colour, Ws2812RmtSingle};
 
-pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<bool>) {
+pub enum LedMessage {
+    Ring(bool),
+    Flash,
+}
+
+pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<LedMessage>) {
     let mut ring = false;
     let mut timeout: Option<u8> = None;
     let mut on = false;
     loop {
         match led_rx.recv_timeout(Duration::from_millis(200)) {
-            Ok(v) => {
+            Ok(LedMessage::Ring(v)) => {
                 log::info!(">> led_rx: {v}");
                 if v {
                     ring = true;
@@ -17,6 +22,13 @@ pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<bool>) {
                 } else {
                     // Keep flashing for timeout cycles
                     timeout = Some(5);
+                }
+            }
+            Ok(LedMessage::Flash) => {
+                // Only flash if not ringing
+                if !ring {
+                    led.set(colour::BLUE).unwrap();
+                    led.set(colour::OFF).unwrap();
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
