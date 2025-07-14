@@ -37,6 +37,7 @@ urlencoding = "2.1.3"
 serde_urlencoded = "0.7.1"
 embedded-svc = "0.28.1"
 enumset = "1.1.6"
+esp-ota = "0.2.2"
 
 [build-dependencies]
 embuild = "0.33"

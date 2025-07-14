@@ -10,7 +10,7 @@ struct ResetPage {
 
 const REBOOT_DELAY_MS: u32 = 1000;
 
-pub fn handle_reset(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
+pub fn reset_handler(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
     let mut response = request.into_response(200, Some("OK"), &[("Content-Type", "text/plain")])?;
     response.write("Rebooting\n".as_bytes())?;
     std::thread::spawn(|| {
@@ -22,7 +22,7 @@ pub fn handle_reset(request: Request<&mut EspHttpConnection>) -> anyhow::Result<
     Ok(())
 }
 
-pub fn reset_handler(
+pub fn make_reset_page(
     navbar: crate::web::NavBar<'static>,
 ) -> impl for<'r> Fn(Request<&mut EspHttpConnection<'r>>) -> anyhow::Result<()> + Send + 'static {
     move |request| {

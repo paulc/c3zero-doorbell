@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}OTA Update{% endblock %}
+
+{% block body %}
+
+    <div class="form-container">
+      <h2>OTA Update</h2>
+      <form id="uploadForm">
+        <input type="file" id="fileInput" accept=".bin" required>
+        <button type="submit" class="button danger" id="rebootButton">OTA Update</button>
+      </form>
+    </div>
+
+    <script>
+      document.getElementById('uploadForm').addEventListener('submit', function(event) {
+        event.preventDefault(); // Prevent the default form submission
+
+        const fileInput = document.getElementById('fileInput');
+        const file = fileInput.files[0];
+
+        if (file) {
+          // Send the file as a raw binary POST request
+          fetch('/ota', {
+            method: 'POST',
+            body: file // Send the file directly as the body
+          })
+          .then(response => {
+            if (response.ok) {
+                return response.json(); // Assuming the server responds with JSON
+            }
+            throw new Error('Network response was not ok.');
+          })
+          .then(data => {
+            console.log('Success:', data);
+          })
+          .catch(error => {
+            console.error('Error:', error);
+          });
+        }
+      });
+    </script>
+
+{% endblock %}
+
+{% block head %}
+{% endblock %}
+
+{% block navbar %}
+    <nav class="navbar">
+      <a href="/" class="navbar-brand">{{ navbar.title }}</a>
+
+        <!-- Mobile menu button -->
+        <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+        <!-- Navigation links -->
+        <ul class="navbar-links" id="navbarLinks">
+          {% for link in navbar.links %}
+            <li class="nav-item">
+              <a href="{{ link.url }}" class="nav-link">{{ link.label }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+    </nav>
+{% endblock %}
+

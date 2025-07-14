@@ -28,10 +28,10 @@ impl<'a> WebServer<'a> {
 
         // Add default handlers
         server.fn_handler("/hello", Method::Get, hello::handle_hello)?;
-        server.fn_handler("/reset", Method::Get, reset::handle_reset)?;
         server.fn_handler("/style.css", Method::Get, style::handle_style)?;
 
-        server.fn_handler("/reset_page", Method::Get, reset::reset_handler(navbar))?;
+        server.fn_handler("/reset_page", Method::Get, reset::make_reset_page(navbar))?;
+        server.fn_handler("/reset", Method::Get, reset::reset_handler)?;
 
         Ok(Self { server })
     }
