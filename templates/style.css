@@ -114,6 +114,12 @@ tr:hover {
 .form-container input[type="checkbox"] {
     accent-color: var(--theme); 
 }
+.button-row {
+    display: flex;
+    justify-content: space-between; /* or 'space-around' or 'space-evenly' */
+    width: 100%;
+    gap: 1rem; /* space between buttons */
+}
 .button {
     background-color: var(--theme);
     color: white;

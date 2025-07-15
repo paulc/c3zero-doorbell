@@ -109,6 +109,7 @@ fn main() -> anyhow::Result<()> {
     web.add_handler("/ota_page", Method::Get, ota::make_ota_page(NAVBAR))?;
     web.add_handler("/ota", Method::Post, ota::ota_handler)?;
     web.add_handler("/ota_rollback", Method::Get, ota::rollback_handler)?;
+    web.add_handler("/ota_valid", Method::Get, ota::valid_handler)?;
 
     // Start watchdog after spawning tasks
     let mut watchdog = twdt_driver.watch_current_task()?;
@@ -200,6 +201,13 @@ mod ota {
             },
             Err(e) => request.into_response(400, Some(&format!("OTA Error: {e}")), &[]),
         }?;
+
+        Ok::<(), anyhow::Error>(())
+    }
+
+    pub fn valid_handler(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
+        esp_ota::mark_app_valid();
+        request.into_ok_response()?;
 
         Ok::<(), anyhow::Error>(())
     }

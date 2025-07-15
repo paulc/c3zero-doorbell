@@ -9,20 +9,56 @@
       <form id="upload_form">
         <input type="file" id="file_upload" accept=".bin" required>
         <button type="submit" class="button danger" id="update_button">OTA Update</button>
-        <p id="status"></p>
+        <p id="upload_status"></p>
       </form>
     </div>
 
     <div class="form-container">
       <h2>OTA Rollback</h2>
-      <form action="/ota_rollback" method="get">
-          <button type="submit" class="button" id="rollback_button">OTA Rollback</button>
-      </form>
+      <div class="button-row">
+        <form id="valid_form" action="/ota_valid" method="get">
+          <button type="submit" class="button" id="valid_button">OTA Valid</button>
+        </form>
+        <form id="rollback_form" action="/ota_rollback" method="get">
+          <button type="submit" class="button danger" id="rollback_button">OTA Rollback</button>
+        </form>
+      </div>
+        <p id="rollback_status"></p>
     </div>
 
     <script>
 
-      const status = document.getElementById('status');
+      const upload_status = document.getElementById('upload_status');
+      const rollback_status = document.getElementById('rollback_status');
+      
+      document.getElementById('upload_form').addEventListener('submit', function(event) {
+        event.preventDefault(); // Prevent the default form submission
+        upload_status.textContent = "Writing firmware...";
+
+        const fileInput = document.getElementById('file_upload');
+        const file = fileInput.files[0];
+
+        if (file) {
+          // Send the file as a raw binary POST request
+          fetch('/ota', {
+            method: 'POST',
+            body: file // Send the file directly as the body
+          })
+          .then(response => {
+            if (response.ok) {
+                upload_status.textContent = `Success: Device restarting`;
+                pollDevice();
+            } else {
+                upload_status.textContent = `Error: ${response.statusText}`;
+            }
+
+          })
+          .catch(error => {
+            upload_status.textContent = `Error: ${error}`;
+            console.error('Error:', error);
+          });
+        }
+      });
 
       async function pollDevice(check_url = "/hello", redirect_url = "/", interval = 1000, timeout = 60000) {
           let isDeviceUp = false;
@@ -46,46 +82,16 @@
                   });
 
               if (isDeviceUp) {
-                  status.textContent = `Device Online: Redirecting`;
+                  upload_status.textContent = `Device Online: Redirecting`;
                   await new Promise(resolve => setTimeout(resolve, interval));
                   location.assign(redirect_url);
               } else {
-                  status.textContent = `Waiting for device... ${count}`;
+                  upload_status.textContent = `Waiting for device... ${count}`;
                   await new Promise(resolve => setTimeout(resolve, interval));
               }
           }
-          status.textContent = "Error: Device not online";
+          upload_status.textContent = "Error: Device not online";
       }
-      
-
-      document.getElementById('upload_form').addEventListener('submit', function(event) {
-        event.preventDefault(); // Prevent the default form submission
-        status.textContent = "Writing firmware...";
-
-        const fileInput = document.getElementById('file_upload');
-        const file = fileInput.files[0];
-
-        if (file) {
-          // Send the file as a raw binary POST request
-          fetch('/ota', {
-            method: 'POST',
-            body: file // Send the file directly as the body
-          })
-          .then(response => {
-            if (response.ok) {
-                status.textContent = `Success: Device restarting`;
-                pollDevice();
-            } else {
-                status.textContent = `Error: ${response.statusText}`;
-            }
-
-          })
-          .catch(error => {
-            status.textContent = `Error: ${error}`;
-            console.error('Error:', error);
-          });
-        }
-      });
     </script>
 
 {% endblock %}
