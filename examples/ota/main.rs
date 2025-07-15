@@ -108,6 +108,7 @@ fn main() -> anyhow::Result<()> {
 
     web.add_handler("/ota_page", Method::Get, ota::make_ota_page(NAVBAR))?;
     web.add_handler("/ota", Method::Post, ota::ota_handler)?;
+    web.add_handler("/ota_rollback", Method::Get, ota::rollback_handler)?;
 
     // Start watchdog after spawning tasks
     let mut watchdog = twdt_driver.watch_current_task()?;
@@ -198,6 +199,15 @@ mod ota {
                 Err(e) => request.into_response(400, Some(&format!("OTA Error: {e}")), &[]),
             },
             Err(e) => request.into_response(400, Some(&format!("OTA Error: {e}")), &[]),
+        }?;
+
+        Ok::<(), anyhow::Error>(())
+    }
+
+    pub fn rollback_handler(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
+        match esp_ota::rollback_and_reboot() {
+            Ok(_) => request.into_response(200, Some("Rollback Succeeded"), &[]), // Not reached
+            Err(e) => request.into_response(400, Some(&format!("OTA Rollback Error: {e}")), &[]),
         }?;
 
         Ok::<(), anyhow::Error>(())

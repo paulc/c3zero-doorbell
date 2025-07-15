@@ -6,17 +6,63 @@
 
     <div class="form-container">
       <h2>OTA Update</h2>
-      <form id="uploadForm">
-        <input type="file" id="fileInput" accept=".bin" required>
-        <button type="submit" class="button danger" id="rebootButton">OTA Update</button>
+      <form id="upload_form">
+        <input type="file" id="file_upload" accept=".bin" required>
+        <button type="submit" class="button danger" id="update_button">OTA Update</button>
+        <p id="status"></p>
+      </form>
+    </div>
+
+    <div class="form-container">
+      <h2>OTA Rollback</h2>
+      <form action="/ota_rollback" method="get">
+          <button type="submit" class="button" id="rollback_button">OTA Rollback</button>
       </form>
     </div>
 
     <script>
-      document.getElementById('uploadForm').addEventListener('submit', function(event) {
-        event.preventDefault(); // Prevent the default form submission
 
-        const fileInput = document.getElementById('fileInput');
+      const status = document.getElementById('status');
+
+      async function pollDevice(check_url = "/hello", redirect_url = "/", interval = 1000, timeout = 60000) {
+          let isDeviceUp = false;
+          const startTime = Date.now();
+          let count = 0;
+
+          await new Promise(resolve => setTimeout(resolve, 2500)); // 2 sec delay before device reboots
+
+          while (Date.now() - startTime < timeout) {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 500); // 500ms timeout
+
+              fetch(check_url, { signal: controller.signal })
+                  .then((r) => {
+                      if (r.ok) {
+                          isDeviceUp = true;
+                      }
+                  })
+                  .catch((e) => {
+                      count++;
+                  });
+
+              if (isDeviceUp) {
+                  status.textContent = `Device Online: Redirecting`;
+                  await new Promise(resolve => setTimeout(resolve, interval));
+                  location.assign(redirect_url);
+              } else {
+                  status.textContent = `Waiting for device... ${count}`;
+                  await new Promise(resolve => setTimeout(resolve, interval));
+              }
+          }
+          status.textContent = "Error: Device not online";
+      }
+      
+
+      document.getElementById('upload_form').addEventListener('submit', function(event) {
+        event.preventDefault(); // Prevent the default form submission
+        status.textContent = "Writing firmware...";
+
+        const fileInput = document.getElementById('file_upload');
         const file = fileInput.files[0];
 
         if (file) {
@@ -27,14 +73,15 @@
           })
           .then(response => {
             if (response.ok) {
-                return response.json(); // Assuming the server responds with JSON
+                status.textContent = `Success: Device restarting`;
+                pollDevice();
+            } else {
+                status.textContent = `Error: ${response.statusText}`;
             }
-            throw new Error('Network response was not ok.');
-          })
-          .then(data => {
-            console.log('Success:', data);
+
           })
           .catch(error => {
+            status.textContent = `Error: ${error}`;
             console.error('Error:', error);
           });
         }
