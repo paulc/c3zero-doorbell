@@ -21,7 +21,7 @@ pub fn make_handler(
 
     move |request| {
         let home_page = HomePage {
-            title: "MQTT Alarm",
+            title: "OTA Test",
             status: status.clone(),
             navbar: navbar.clone(),
         };

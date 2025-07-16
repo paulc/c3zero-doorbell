@@ -16,12 +16,8 @@
     <div class="form-container">
       <h2>OTA Rollback</h2>
       <div class="button-row">
-        <form id="valid_form" action="/ota_valid" method="get">
-          <button type="submit" class="button" id="valid_button">OTA Valid</button>
-        </form>
-        <form id="rollback_form" action="/ota_rollback" method="get">
-          <button type="submit" class="button danger" id="rollback_button">OTA Rollback</button>
-        </form>
+        <a href="/ota_valid" class="button flex" class="width: 100px" id="valid_button">OTA Valid</a>
+        <a href="/ota_rollback" class="button flex danger" class="width: 100px" id="rollback_button">OTA Rollback</a>
       </div>
         <p id="rollback_status"></p>
     </div>
@@ -31,6 +27,27 @@
       const upload_status = document.getElementById('upload_status');
       const rollback_status = document.getElementById('rollback_status');
       
+      document.getElementById('rollback_button').addEventListener('click', function(event) {
+        event.preventDefault(); 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 500); // 500ms timeout
+
+        rollback_status.textContent = 'Attempting Rollback';
+
+        // rollback doesnt return if successful (reboots device)
+        fetch("/ota_rollback", { method: 'GET', redirect: 'manual', signal: controller.signal })
+                  .then((r) => {
+                    // Rollback failed
+                    const f = getCookieJSON('flash_msg')
+                    flash.show(f.message,f.level);
+                    deleteCookie('flash_msg');
+                  })
+                  .catch((e) => {
+                      // Timeout - start polling device
+                      pollDevice(rollback_status);
+                  });
+      });
+
       document.getElementById('upload_form').addEventListener('submit', function(event) {
         event.preventDefault(); // Prevent the default form submission
         upload_status.textContent = "Writing firmware...";
@@ -47,7 +64,7 @@
           .then(response => {
             if (response.ok) {
                 upload_status.textContent = `Success: Device restarting`;
-                pollDevice();
+                pollDevice(upload_status);
             } else {
                 upload_status.textContent = `Error: ${response.statusText}`;
             }
@@ -60,7 +77,7 @@
         }
       });
 
-      async function pollDevice(check_url = "/hello", redirect_url = "/", interval = 1000, timeout = 60000) {
+      async function pollDevice(status_element, check_url = "/hello", redirect_url = "/", interval = 1000, timeout = 60000) {
           let isDeviceUp = false;
           const startTime = Date.now();
           let count = 0;
@@ -82,15 +99,15 @@
                   });
 
               if (isDeviceUp) {
-                  upload_status.textContent = `Device Online: Redirecting`;
+                  status_element.textContent = `Device Online: Redirecting`;
                   await new Promise(resolve => setTimeout(resolve, interval));
                   location.assign(redirect_url);
               } else {
-                  upload_status.textContent = `Waiting for device... ${count}`;
+                  status_element.textContent = `Waiting for device... ${count}`;
                   await new Promise(resolve => setTimeout(resolve, interval));
               }
           }
-          upload_status.textContent = "Error: Device not online";
+          status_element.textContent = "Error: Device not online";
       }
     </script>
 

@@ -5,6 +5,7 @@ pub mod alert;
 pub mod button;
 pub mod mqtt;
 pub mod nvs;
+pub mod ota;
 pub mod stats;
 pub mod web;
 pub mod wifi;
