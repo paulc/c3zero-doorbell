@@ -23,6 +23,12 @@ impl Ota {
     }
 }
 
+impl Default for Ota {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(askama::Template)]
 #[template(path = "ota_page.html")]
 struct OtaPage {
