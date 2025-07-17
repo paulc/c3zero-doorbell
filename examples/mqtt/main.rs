@@ -13,11 +13,11 @@ use std::thread;
 use std::time::Duration;
 
 use doorbell::nvs::NVStore;
-use doorbell::web::{NavBar, NavLink, WebServer};
+use doorbell::ota::Ota;
+use doorbell::web::{BuildInfo, HomePage, NavBar, NavLink, WebServer};
 use doorbell::wifi::{APConfig, APStore, WifiManager};
 use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 
-mod home_page;
 mod led_task;
 mod mqtt_task;
 
@@ -28,6 +28,13 @@ const NVS_NAMESPACE: &str = "DOORBELL";
 
 const WATCHDOG_TIMEOUT: u64 = 10;
 const RESET_THRESHOLD: u64 = 5;
+
+const BUILD_INFO: BuildInfo = BuildInfo {
+    build_ts: env!("BUILD_TS"),
+    build_branch: env!("BUILD_BRANCH"),
+    build_hash: env!("BUILD_HASH"),
+    build_profile: env!("BUILD_PROFILE"),
+};
 
 // Static NavBar
 pub const NAVBAR: NavBar = NavBar {
@@ -40,6 +47,10 @@ pub const NAVBAR: NavBar = NavBar {
         NavLink {
             url: "/mqtt",
             label: "MQTT Configuration",
+        },
+        NavLink {
+            url: "/ota_page",
+            label: "OTA Update",
         },
         NavLink {
             url: "/reset_page",
@@ -102,16 +113,22 @@ fn main() -> anyhow::Result<()> {
     // Start web server
     let mut web = WebServer::new(NAVBAR)?;
 
+    // OTA
+    let ota = Ota::new();
+
     // Add module handlers
     nvs.add_handlers(&mut web, NAVBAR)?;
     wifi.add_handlers(&mut web, NAVBAR)?;
+    ota.add_handlers(&mut web, NAVBAR)?;
 
-    // Add local handlers
-    web.add_handler(
-        "/",
-        Method::Get,
-        home_page::make_handler(&wifi_state, NAVBAR),
-    )?;
+    // Home Page
+    let status = wifi_state
+        .display_fields()
+        .into_iter()
+        .chain(BUILD_INFO.display_fields())
+        .collect::<Vec<_>>();
+    let home_page = HomePage::new(NAVBAR.title, status, NAVBAR);
+    web.add_handler("/", Method::Get, home_page.make_handler())?;
 
     let mqtt = mqtt_task::MQTTTask::init()?;
     mqtt.add_handlers(&mut web, NAVBAR)?;

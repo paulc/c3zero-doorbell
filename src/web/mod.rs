@@ -5,12 +5,14 @@ use esp_idf_svc::http::Method;
 
 mod flash_msg;
 mod hello;
+mod home_page;
 mod navbar;
 mod reset;
 mod style;
 
 // Exports
 pub use flash_msg::FlashMsg;
+pub use home_page::{BuildInfo, HomePage};
 pub use navbar::{NavBar, NavLink};
 
 pub struct WebServer<'a> {

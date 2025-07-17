@@ -42,4 +42,5 @@ esp-ota = "0.2.2"
 
 [build-dependencies]
 embuild = "0.33"
+time-format = "1.2.1"
 

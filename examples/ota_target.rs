@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use doorbell::nvs::NVStore;
 use doorbell::ota::Ota;
-use doorbell::web::{NavBar, NavLink, WebServer};
+use doorbell::web::{BuildInfo, HomePage, NavBar, NavLink, WebServer};
 use doorbell::wifi::{APConfig, APStore, WifiManager};
 use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 
@@ -24,6 +24,13 @@ const NVS_NAMESPACE: &str = "DOORBELL";
 
 const WATCHDOG_TIMEOUT: u64 = 30;
 const RESET_THRESHOLD: u64 = 5;
+
+const BUILD_INFO: BuildInfo = BuildInfo {
+    build_ts: env!("BUILD_TS"),
+    build_branch: env!("BUILD_BRANCH"),
+    build_hash: env!("BUILD_HASH"),
+    build_profile: env!("BUILD_PROFILE"),
+};
 
 // Static NavBar
 pub const NAVBAR: NavBar = NavBar {
@@ -102,12 +109,14 @@ fn main() -> anyhow::Result<()> {
     wifi.add_handlers(&mut web, NAVBAR)?;
     ota.add_handlers(&mut web, NAVBAR)?;
 
-    // Add local handlers
-    web.add_handler(
-        "/",
-        Method::Get,
-        home_page::make_handler("OTA Target", wifi_state.display_fields(), NAVBAR),
-    )?;
+    // Home Page
+    let status = wifi_state
+        .display_fields()
+        .into_iter()
+        .chain(BUILD_INFO.display_fields())
+        .collect::<Vec<_>>();
+    let home_page = HomePage::new(NAVBAR.title, status, NAVBAR);
+    web.add_handler("/", Method::Get, home_page.make_handler())?;
 
     // Start watchdog after spawning tasks
     let mut watchdog = twdt_driver.watch_current_task()?;
@@ -134,40 +143,5 @@ fn main() -> anyhow::Result<()> {
 
         // Update watchdog
         watchdog.feed()?
-    }
-}
-
-mod home_page {
-    use esp_idf_svc::http::server::{EspHttpConnection, Request};
-
-    use doorbell::web::NavBar;
-
-    use askama::Template;
-
-    #[derive(askama::Template)]
-    #[template(path = "index.html")]
-    struct HomePage {
-        title: &'static str,
-        status: Vec<(String, String)>,
-        navbar: NavBar<'static>,
-    }
-
-    pub fn make_handler(
-        title: &'static str,
-        status: Vec<(String, String)>,
-        navbar: NavBar<'static>,
-    ) -> impl for<'r> Fn(Request<&mut EspHttpConnection<'r>>) -> anyhow::Result<()> + Send + 'static
-    {
-        move |request| {
-            let home_page = HomePage {
-                title,
-                status: status.clone(),
-                navbar: navbar.clone(),
-            };
-            let mut response = request.into_response(200, Some("OK"), &[])?;
-            let html = home_page.render()?;
-            response.write(html.as_bytes())?;
-            Ok::<(), anyhow::Error>(())
-        }
     }
 }

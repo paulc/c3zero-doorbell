@@ -6,6 +6,6 @@ pub struct NavLink {
 
 #[derive(Clone)]
 pub struct NavBar<'a> {
-    pub title: &'static str,
+    pub title: &'a str,
     pub links: &'a [NavLink],
 }
