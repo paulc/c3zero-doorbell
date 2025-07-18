@@ -1,8 +1,9 @@
+use std::sync::Mutex;
+
+use askama::Template;
 use esp_idf_svc::http::server::{EspHttpConnection, Request};
 
 use crate::web::NavBar;
-
-use askama::Template;
 
 #[derive(Clone)]
 pub struct BuildInfo {
@@ -23,26 +24,41 @@ impl BuildInfo {
     }
 }
 
+pub static STATUS: Mutex<Option<Vec<(String, String)>>> = Mutex::new(None);
+
 #[derive(Clone, askama::Template)]
 #[template(path = "index.html")]
 pub struct HomePage {
     title: &'static str,
-    status: Vec<(String, String)>,
+    build_info: Vec<(String, String)>,
     navbar: NavBar<'static>,
 }
 
 impl HomePage {
     pub fn new(
         title: &'static str,
-        status: Vec<(String, String)>,
+        build_info: Vec<(String, String)>,
         navbar: NavBar<'static>,
     ) -> Self {
         Self {
             title,
-            status,
+            build_info,
             navbar,
         }
     }
+
+    pub fn set_status(&self, status: Vec<(String, String)>) -> anyhow::Result<()> {
+        STATUS.replace(Some(status))?;
+        Ok(())
+    }
+
+    pub fn get_status(&self) -> Vec<(String, String)> {
+        match STATUS.get_cloned() {
+            Ok(Some(v)) => v,
+            _ => Vec::new(),
+        }
+    }
+
     pub fn make_handler(
         &self,
     ) -> impl for<'r> Fn(Request<&mut EspHttpConnection<'r>>) -> anyhow::Result<()> + Send + 'static

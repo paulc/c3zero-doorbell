@@ -5,8 +5,7 @@
 {% block body %}
 <h1>{{ title }}</h1>
     <div class="container">
-        <!-- List of Known APs -->
-        <h3>Status</h3>
+        <h3>Build Info</h3>
         <table class="rounded">
             <thead>
                 <tr>
@@ -15,7 +14,27 @@
                 </tr>
             </thead>
             <tbody>
-                {% for s in status %}
+                {% for s in build_info %}
+                <tr>
+                    <td>{{ s.0 }}</td>
+                    <td>{{ s.1 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="container">
+        <h3>WiFi Status</h3>
+        <table class="rounded">
+            <thead>
+                <tr>
+                    <th style="width: 30%">Key</th>
+                    <th style="width: 70%">Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in self.get_status() %}
                 <tr>
                     <td>{{ s.0 }}</td>
                     <td>{{ s.1 }}</td>
