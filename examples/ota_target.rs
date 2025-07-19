@@ -131,7 +131,7 @@ fn main() -> anyhow::Result<()> {
                     // Only try to reconnect every 30 secs
                     if count % 30 == 0 {
                         log::error!("WIFi Disconnected: Attempting to reconnect");
-                        match wifi.connect_sta(&ap, 30000) {
+                        match wifi.connect_sta(ap, 30000) {
                             Ok(WifiState::Station(config, ip_info)) => {
                                 log::info!("WIFi Reconnected: {wifi_state}");
                                 wifi_state = WifiState::Station(config, ip_info);
