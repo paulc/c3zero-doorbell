@@ -21,7 +21,7 @@ pub struct WifiManager<'a> {
     visible: Option<Vec<AccessPointInfo>>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WifiState {
     NotConnected,
     Station(APConfig, IpInfo),

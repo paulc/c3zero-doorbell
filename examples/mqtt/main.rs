@@ -126,10 +126,23 @@ fn main() -> anyhow::Result<()> {
     let mut count = 0_usize;
     let mut mqtt_started = false;
 
+    let mut prev_state = (wifi_state.clone(), false, false);
+
     loop {
-        match wifi_state {
-            WifiState::NotConnected => {
-                // Try to connect to known AP (or start local AP)
+        let current_state = (wifi_state.clone(), wifi.is_connected()?, mqtt_started);
+        if current_state != prev_state {
+            // State Changed
+            log::info!(
+                "STATE: {}, connected: {}, mqtt: {}",
+                current_state.0,
+                current_state.1,
+                current_state.2
+            );
+        }
+
+        match current_state {
+            (WifiState::NotConnected, _, _) => {
+                // NotConnected - try to connect to known AP (or start local AP)
                 wifi.scan()?;
                 wifi_state = wifi.try_connect(
                     &APStore::get_aps()?,
@@ -140,58 +153,60 @@ fn main() -> anyhow::Result<()> {
                 // Update home page status
                 home_page.set_status(wifi_state.display_fields())?;
             }
-            WifiState::Station(ref ap, _) => {
-                if wifi.is_connected()? {
-                    if !mqtt_started && mqtt.is_enabled() {
-                        let led_tx = led_tx.clone();
-
-                        match mqtt.run(
-                            move |s: &str| match s {
-                                "ON" => led_tx.send(led_task::LedMessage::Ring(true)).unwrap_or(()),
-                                "OFF" => {
-                                    led_tx.send(led_task::LedMessage::Ring(false)).unwrap_or(())
-                                }
-                                _ => {}
-                            },
-                            &wifi_state.to_string(),
-                        ) {
-                            Ok(_) => {
-                                log::info!("mqtt_task running");
-                                mqtt_started = true
-                            }
-                            Err(e) => log::info!("mqtt_task error [{e}]"),
+            (WifiState::Station(ref ap, _), false, _) => {
+                // WiFi disconnected - try to reconnect (every 30 secs)
+                if count % 30 == 0 {
+                    log::error!("WIFi Disconnected: Attempting to reconnect");
+                    match wifi.connect_sta(ap, 30000) {
+                        Ok(WifiState::Station(config, ip_info)) => {
+                            log::info!("WIFi Reconnected: {wifi_state}");
+                            wifi_state = WifiState::Station(config, ip_info);
+                            // Update home page status
+                            home_page.set_status(wifi_state.display_fields())?;
                         }
-                    }
-
-                    // Normal operation
-                    led_tx.send(led_task::LedMessage::Flash)?;
-                } else {
-                    // If disconnected we try to reconnect to the same AP
-                    // (Only try to reconnect every 30 secs)
-                    if count % 30 == 0 {
-                        log::error!("WIFi Disconnected: Attempting to reconnect");
-                        match wifi.connect_sta(ap, 30000) {
-                            Ok(WifiState::Station(config, ip_info)) => {
-                                log::info!("WIFi Reconnected: {wifi_state}");
-                                wifi_state = WifiState::Station(config, ip_info);
-                                // Update home page status
-                                home_page.set_status(wifi_state.display_fields())?;
-                            }
-                            Ok(_) => {
-                                log::info!("WiFi Failed to Reconnect");
-                            }
-                            Err(e) => {
-                                // Something went wrong - possibly reboot?
-                                log::info!("WiFi Error Reconnecting: {e}");
-                            }
+                        Ok(_) => {
+                            log::info!("WiFi Failed to Reconnect");
+                        }
+                        Err(e) => {
+                            // Something went wrong - possibly reboot?
+                            log::info!("WiFi Error Reconnecting: {e}");
                         }
                     }
                 }
             }
-            WifiState::AP(_, _) => {
-                // Run until restart
+            (WifiState::Station(_, _), true, false) => {
+                // WiFi connected - start mqtt_task
+                if mqtt.is_enabled() {
+                    let led_tx = led_tx.clone();
+
+                    match mqtt.run(
+                        move |s: &str| match s {
+                            "ON" => led_tx.send(led_task::LedMessage::Ring(true)).unwrap_or(()),
+                            "OFF" => led_tx.send(led_task::LedMessage::Ring(false)).unwrap_or(()),
+                            _ => {}
+                        },
+                        &wifi_state.to_string(),
+                    ) {
+                        Ok(_) => {
+                            log::info!("mqtt_task running");
+                            mqtt_started = true
+                        }
+                        Err(e) => log::info!("mqtt_task error [{e}]"),
+                    }
+                }
+            }
+            (WifiState::Station(_, _), true, true) => {
+                // WiFi connected / MQTT running - normal operation
+                led_tx.send(led_task::LedMessage::Flash(colour::BLUE))?;
+            }
+            (WifiState::AP(_, _), _, _) => {
+                // AP Mode
+                led_tx.send(led_task::LedMessage::Flash(colour::GREEN))?;
             }
         }
+
+        // Update state
+        prev_state = current_state;
 
         // Update watchdog
         watchdog.feed()?;

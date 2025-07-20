@@ -1,11 +1,11 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use doorbell::ws2812::{colour, Ws2812RmtSingle};
+use doorbell::ws2812::{colour, Rgb, Ws2812RmtSingle};
 
 pub enum LedMessage {
     Ring(bool),
-    Flash,
+    Flash(Rgb),
 }
 
 pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<LedMessage>) {
@@ -24,10 +24,10 @@ pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<LedMessage>) {
                     timeout = Some(5);
                 }
             }
-            Ok(LedMessage::Flash) => {
+            Ok(LedMessage::Flash(c)) => {
                 // Only flash if not ringing
                 if !ring {
-                    led.set(colour::BLUE).unwrap();
+                    led.set(c).unwrap();
                     led.set(colour::OFF).unwrap();
                 }
             }
