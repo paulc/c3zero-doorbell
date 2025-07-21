@@ -122,8 +122,17 @@ fn main() -> anyhow::Result<()> {
     // ADC Task
     let (adc_tx, adc_rx) = mpsc::channel();
 
+    let adc_task = adc::AdcTask::new(
+        peripherals.timer00,
+        peripherals.adc1,
+        peripherals.pins.gpio4,
+        adc_tx,
+    )?;
+    adc_task.run()?;
+
     // Start ADC task
     // Need to expand stack size as we allocate ADC & FP buffers on stack
+    /*
     let _adc_task = thread::Builder::new()
         .stack_size(8192)
         .spawn(move || {
@@ -135,6 +144,7 @@ fn main() -> anyhow::Result<()> {
             )
         })
         .expect("Error starting adc_task:");
+    */
 
     // Start watchdog after initialisation
     let mut watchdog = twdt_driver.watch_current_task()?;
@@ -153,11 +163,8 @@ fn main() -> anyhow::Result<()> {
                 log::info!("WifiState: {wifi_state:?}");
 
                 // If we have connected start services
-                match wifi_state {
-                    WifiState::Station(_, _) => {
-                        // Start services
-                    }
-                    _ => {}
+                if let WifiState::Station(_, _) = wifi_state {
+                    // Start services
                 }
 
                 // Update home page status
@@ -184,7 +191,7 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
                 // Flush adc_rx buffer
-                while let Ok(_) = adc_rx.try_recv() {}
+                while adc_rx.try_recv().is_ok() {}
                 thread::sleep(Duration::from_millis(1000));
             }
             (WifiState::Station(_, _), true) => {
@@ -206,7 +213,7 @@ fn main() -> anyhow::Result<()> {
                 // AP Mode
                 led_tx.send(led_task::LedMessage::Flash(colour::GREEN))?;
                 // Flush adc_rx buffer
-                while let Ok(_) = adc_rx.try_recv() {}
+                while adc_rx.try_recv().is_ok() {}
                 thread::sleep(Duration::from_millis(1000));
             }
         }
