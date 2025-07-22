@@ -161,13 +161,16 @@ impl AdcTask {
                         n
                     };
 
-                    // Append frame to output
+                    // Append frame to output (ignore annoying clippy warning)
+                    #[allow(clippy::needless_range_loop)]
                     for i in 0..n {
                         self.state.samples[frame_len + i] = samples[i].data() as f64 / 4096_f64;
                     }
                     frame_len += n;
                 }
-                Err(_) => {}
+                Err(_) => {
+                    // Ignore ADC errors ?
+                }
             }
         }
     }
