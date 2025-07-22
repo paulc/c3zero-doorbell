@@ -101,7 +101,7 @@ fn main() -> anyhow::Result<()> {
 
     // LED task
     let (led_tx, led_rx) = mpsc::channel::<led_task::LedMessage>();
-    let _led_task = thread::spawn(move || led_task::led_task(led, led_rx));
+    let _led_task_id = thread::spawn(move || led_task::led_task(led, led_rx));
 
     // Start web server
     let mut web = WebServer::new(NAVBAR)?;
@@ -122,29 +122,15 @@ fn main() -> anyhow::Result<()> {
     // ADC Task
     let (adc_tx, adc_rx) = mpsc::channel();
 
-    let adc_task = adc::AdcTask::new(
+    let _adc_task_id = adc::adc_task(
         peripherals.timer00,
         peripherals.adc1,
         peripherals.pins.gpio4,
         adc_tx,
     )?;
-    adc_task.run()?;
 
-    // Start ADC task
-    // Need to expand stack size as we allocate ADC & FP buffers on stack
-    /*
-    let _adc_task = thread::Builder::new()
-        .stack_size(8192)
-        .spawn(move || {
-            adc::adc_task(
-                peripherals.timer00,
-                peripherals.adc1,
-                peripherals.pins.gpio4,
-                adc_tx,
-            )
-        })
-        .expect("Error starting adc_task:");
-    */
+    web.add_handler("/adc/debug/on", Method::Get, adc::adc_debug_on_handler)?;
+    web.add_handler("/adc/debug/off", Method::Get, adc::adc_debug_off_handler)?;
 
     // Start watchdog after initialisation
     let mut watchdog = twdt_driver.watch_current_task()?;
@@ -200,14 +186,17 @@ fn main() -> anyhow::Result<()> {
                     Ok(msg) => match msg {
                         adc::RingMessage::RingStart(ref _s) => {
                             log::info!("adc_rx :: {msg:?}");
+                            led_tx.send(led_task::LedMessage::Ring(true))?;
                         }
                         adc::RingMessage::RingStop => {
                             log::info!("adc_rx :: {msg:?}");
+                            led_tx.send(led_task::LedMessage::Ring(false))?;
                         }
                     },
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
                     Err(e) => log::error!("ERROR :: adc_rx :: {e:?}"),
                 }
+                led_tx.send(led_task::LedMessage::Flash(colour::BLUE))?;
             }
             (WifiState::AP(_, _), _) => {
                 // AP Mode
