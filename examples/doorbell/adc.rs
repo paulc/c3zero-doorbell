@@ -54,7 +54,11 @@ pub fn adc_debug_off_handler(request: Request<&mut EspHttpConnection>) -> anyhow
     Ok::<(), anyhow::Error>(())
 }
 
-// --- IMPLEMENTATION ---
+#[derive(Debug)]
+pub enum RingMessage {
+    RingStart(Stats),
+    RingStop,
+}
 
 #[derive(Debug, Clone)]
 pub struct Stats {
@@ -76,11 +80,7 @@ impl std::fmt::Display for Stats {
     }
 }
 
-#[derive(Debug)]
-pub enum RingMessage {
-    RingStart(Stats),
-    RingStop,
-}
+// --- IMPLEMENTATION ---
 
 struct AdcState {
     samples: [f64; ADC_BUFFER_LEN],
@@ -104,14 +104,14 @@ impl AdcState {
     }
 }
 
-struct AdcTask {
-    timer: TimerDriver<'static>,
-    adc: AdcContDriver<'static>,
+struct AdcTask<'a> {
+    timer: TimerDriver<'a>,
+    adc: AdcContDriver<'a>,
     tx: mpsc::Sender<RingMessage>,
     state: AdcState,
 }
 
-impl AdcTask {
+impl<'a> AdcTask<'a> {
     fn new(
         timer: esp_idf_hal::timer::TIMER00,
         adc: esp_idf_hal::adc::ADC1,
