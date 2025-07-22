@@ -18,6 +18,10 @@ pub const THRESHOLD_BUFFER: usize = 5; // Average std-dev threshold over this nu
 pub static ADC_STATS: Mutex<Option<Stats>> = Mutex::new(None);
 pub static ADC_DEBUG: Mutex<bool> = Mutex::new(false);
 
+pub type AdcTimer = esp_idf_hal::timer::TIMER00;
+pub type AdcDevice = esp_idf_hal::adc::ADC1;
+pub type AdcPin = esp_idf_hal::gpio::Gpio4;
+
 pub fn adc_task(
     timer: esp_idf_hal::timer::TIMER00,
     adc: esp_idf_hal::adc::ADC1,
@@ -113,9 +117,9 @@ struct AdcTask<'a> {
 
 impl<'a> AdcTask<'a> {
     fn new(
-        timer: esp_idf_hal::timer::TIMER00,
-        adc: esp_idf_hal::adc::ADC1,
-        adc_pin: esp_idf_hal::gpio::Gpio4,
+        timer: AdcTimer,
+        adc: AdcDevice,
+        adc_pin: AdcPin,
         tx: mpsc::Sender<RingMessage>,
     ) -> anyhow::Result<Self> {
         // Setup Timer
