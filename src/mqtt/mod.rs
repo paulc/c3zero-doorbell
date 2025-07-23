@@ -62,6 +62,7 @@ impl MqttManager {
         client_id: Option<&str>,
         tx: mpsc::Sender<MqttMessage>,
     ) -> anyhow::Result<Self> {
+        log::info!("Creating MqttClient: {url}");
         let (client, mut connection) = EspMqttClient::new(
             url,
             &MqttClientConfiguration {
@@ -75,6 +76,7 @@ impl MqttManager {
         let _conn_handle = std::thread::Builder::new()
             .stack_size(8192)
             .spawn(move || {
+                // TODO Remove has_disconnected test
                 let mut has_disconnected = false;
                 log::info!("MQTT Listening for messages");
                 while let Ok(event) = connection.next() {

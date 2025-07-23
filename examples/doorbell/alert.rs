@@ -1,8 +1,8 @@
-use esp_idf_svc::http::server::{EspHttpConnection, Request};
-use esp_idf_svc::http::Method;
-
 use std::thread;
 use std::time::Duration;
+
+use esp_idf_svc::http::server::{EspHttpConnection, Request};
+use esp_idf_svc::http::Method;
 
 use askama::Template;
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ use doorbell::nvs::NVStore;
 use doorbell::web::{FlashMsg, NavBar, WebServer};
 
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
-pub struct MQTTConfig {
+pub struct MqttConfig {
     #[serde(default)]
     pub enabled: bool,
     pub url: String,
@@ -21,57 +21,60 @@ pub struct MQTTConfig {
     pub status_topic: String,
 }
 
-pub struct MQTTTask(MQTTConfig);
+pub struct MqttTask(MqttConfig);
 
-impl MQTTTask {
+impl MqttTask {
     pub fn init() -> anyhow::Result<Self> {
         Ok(Self(NVStore::get("mqtt")?.unwrap_or_default()))
     }
 
-    pub fn is_enabled(&self) -> bool {
-        self.0.enabled
-    }
-
-    pub fn run<F>(&self, f_ring: F, ip: &str) -> anyhow::Result<()>
-    where
-        F: Fn(&str) + Send + 'static,
-    {
+    pub fn run(&self) -> anyhow::Result<()> {
         if self.0.enabled {
             let mqtt_rx = StaticMqttManager::init(&self.0.url, Some(&self.0.client_id))?;
-            let ring_topic = self.0.ring_topic.clone();
 
             log::info!("Starting MQTT Connection Thread");
             let _connection_t = thread::spawn(move || loop {
                 match mqtt_rx.recv_timeout(Duration::from_secs(2)) {
+                    Ok(MqttMessage::Reconnected) => {
+                        log::info!("MQTT re-connected: resubscribing");
+                        // Re-subscribe channels here
+                    }
                     Ok(MqttMessage::Message(topic, data)) => {
                         let data = String::from_utf8_lossy(&data).to_string();
                         log::info!("mqtt_rx: {topic} : {data}");
-                        if topic == ring_topic {
-                            f_ring(data.as_str());
-                        }
-                    }
-                    Ok(MqttMessage::Reconnected) => {
-                        log::info!("MQTT re-connected: resubscribing");
-                        StaticMqttManager::subscribe(&ring_topic)
-                            .expect("Failed to resubscribe to MQTT_RING_TOPIC");
                     }
                     _ => {}
                 }
             });
 
-            let ip_topic = format!("{}/ip", self.0.status_topic);
-            let ip = ip.to_owned();
+            let wifi_topic = format!("{}/wifi", self.0.status_topic);
             log::info!("Starting MQTT Status Thread");
             let _update_t = thread::spawn(move || loop {
-                let _ = StaticMqttManager::publish(&ip_topic, ip.as_bytes(), false);
+                let wifi_state = match crate::WIFI_STATE.try_lock() {
+                    Ok(wifi_state) => wifi_state.to_string(),
+                    Err(_) => "<Unknown>".to_string(),
+                };
+                let _ = StaticMqttManager::publish(&wifi_topic, wifi_state.as_bytes(), false);
                 thread::sleep(Duration::from_secs(30));
             });
-
-            // Subscribe to ring topic
-            StaticMqttManager::subscribe(&self.0.ring_topic)?;
         }
-
         Ok(())
+    }
+
+    pub fn ring_msg(&self, state: bool) -> anyhow::Result<u32> {
+        if self.0.enabled {
+            StaticMqttManager::publish(
+                &self.0.ring_topic,
+                if state {
+                    "ON".as_bytes()
+                } else {
+                    "OFF".as_bytes()
+                },
+                true,
+            )
+        } else {
+            Ok(0)
+        }
     }
 
     pub fn add_handlers(
@@ -89,7 +92,7 @@ impl MQTTTask {
 #[template(path = "mqtt.html")]
 struct MqttPage<'a> {
     title: &'a str,
-    config: MQTTConfig,
+    config: MqttConfig,
     navbar: NavBar<'static>,
 }
 
@@ -115,7 +118,7 @@ pub fn mqtt_submit(mut request: Request<&mut EspHttpConnection>) -> anyhow::Resu
     let mut buf = [0_u8; 1024];
     let len = request.read(&mut buf)?;
 
-    match serde_urlencoded::from_bytes::<MQTTConfig>(&buf[0..len]) {
+    match serde_urlencoded::from_bytes::<MqttConfig>(&buf[0..len]) {
         Ok(c) => {
             log::info!("MQTT Config: >>{c:?}");
             // Check config
@@ -135,7 +138,7 @@ pub fn mqtt_submit(mut request: Request<&mut EspHttpConnection>) -> anyhow::Resu
                 return Ok::<(), anyhow::Error>(());
             }
             // Update NVS
-            NVStore::set::<MQTTConfig>("mqtt", &c)?;
+            NVStore::set::<MqttConfig>("mqtt", &c)?;
             let flash = serde_json::to_string(&FlashMsg {
                 level: "success",
                 message: "Successfully updated MQTT settings",

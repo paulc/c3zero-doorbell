@@ -8,7 +8,7 @@ use esp_idf_svc::http::Method;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::EspWifi;
 
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -19,6 +19,7 @@ use doorbell::wifi::{APConfig, APStore, WifiManager, WifiState};
 use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 
 mod adc;
+mod alert;
 mod led_task;
 mod stats;
 
@@ -36,6 +37,8 @@ const BUILD_INFO: BuildInfo = BuildInfo {
     build_profile: env!("BUILD_PROFILE"),
 };
 
+pub static WIFI_STATE: Mutex<WifiState> = Mutex::new(WifiState::NotConnected);
+
 // Static NavBar
 pub const NAVBAR: NavBar = NavBar {
     title: "Doorbell",
@@ -45,8 +48,8 @@ pub const NAVBAR: NavBar = NavBar {
             label: "Wifi Configuration",
         },
         NavLink {
-            url: "/alert",
-            label: "Alert Configuration",
+            url: "/mqtt",
+            label: "MQTT Configuration",
         },
         NavLink {
             url: "/ota_page",
@@ -91,8 +94,6 @@ fn main() -> anyhow::Result<()> {
         Some(nvs_default_partition.clone()),
     )?)?;
 
-    let mut wifi_state = WifiState::NotConnected;
-
     // Onboard WS2812 (GPIO10)
     let ws2812 = peripherals.pins.gpio10.downgrade_output();
     let channel = peripherals.rmt.channel0;
@@ -116,7 +117,7 @@ fn main() -> anyhow::Result<()> {
 
     // Home Page
     let home_page = HomePage::new(NAVBAR.title, BUILD_INFO.display_fields(), NAVBAR);
-    home_page.set_status(wifi_state.display_fields())?;
+    home_page.set_status(WIFI_STATE.get_cloned()?.display_fields())?;
     web.add_handler("/", Method::Get, home_page.make_handler())?;
 
     // ADC Task
@@ -132,16 +133,20 @@ fn main() -> anyhow::Result<()> {
     web.add_handler("/adc/debug/on", Method::Get, adc::adc_debug_on_handler)?;
     web.add_handler("/adc/debug/off", Method::Get, adc::adc_debug_off_handler)?;
 
+    // MQTT
+    let mqtt_task = alert::MqttTask::init()?;
+    mqtt_task.add_handlers(&mut web, NAVBAR)?;
+
     // Start watchdog after initialisation
     let mut watchdog = twdt_driver.watch_current_task()?;
     let mut count = 0_usize;
 
     loop {
-        match (&wifi_state, wifi.is_connected()?) {
+        match (&WIFI_STATE.get_cloned()?, wifi.is_connected()?) {
             (WifiState::NotConnected, _) => {
                 // NotConnected - try to connect to known AP (or start local AP)
                 wifi.scan()?;
-                wifi_state = wifi.try_connect(
+                let wifi_state = wifi.try_connect(
                     &APStore::get_aps()?,
                     Some(APConfig::new(AP_SSID, AP_PASSWORD)?),
                     30_000,
@@ -151,10 +156,16 @@ fn main() -> anyhow::Result<()> {
                 // If we have connected start services
                 if let WifiState::Station(_, _) = wifi_state {
                     // Start services
+                    log::info!("Starting mqtt_task:");
+                    mqtt_task.run()?;
+                    mqtt_task.ring_msg(false)?;
                 }
 
                 // Update home page status
                 home_page.set_status(wifi_state.display_fields())?;
+
+                // Update WIFI_STATE
+                WIFI_STATE.replace(wifi_state)?;
             }
             (WifiState::Station(ref ap, _), false) => {
                 // WiFi disconnected - try to reconnect (every 30 secs)
@@ -162,10 +173,12 @@ fn main() -> anyhow::Result<()> {
                     log::error!("WIFi Disconnected: Attempting to reconnect");
                     match wifi.connect_sta(ap, 30_000) {
                         Ok(WifiState::Station(config, ip_info)) => {
+                            let wifi_state = WifiState::Station(config, ip_info);
                             log::info!("WIFi Reconnected: {wifi_state}");
-                            wifi_state = WifiState::Station(config, ip_info);
                             // Update home page status
                             home_page.set_status(wifi_state.display_fields())?;
+                            // Update WIFI_STATE
+                            WIFI_STATE.replace(wifi_state)?;
                         }
                         Ok(_) => {
                             log::info!("WiFi Failed to Reconnect");
@@ -187,10 +200,12 @@ fn main() -> anyhow::Result<()> {
                         adc::RingMessage::RingStart(ref _s) => {
                             log::info!("adc_rx :: {msg:?}");
                             led_tx.send(led_task::LedMessage::Ring(true))?;
+                            mqtt_task.ring_msg(true)?;
                         }
                         adc::RingMessage::RingStop => {
                             log::info!("adc_rx :: {msg:?}");
                             led_tx.send(led_task::LedMessage::Ring(false))?;
+                            mqtt_task.ring_msg(false)?;
                         }
                     },
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
