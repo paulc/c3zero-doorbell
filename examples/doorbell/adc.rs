@@ -180,7 +180,7 @@ impl<'a> AdcTask<'a> {
             }
         }
         // Save last frame in ADC_SAMPLES
-        let _ = ADC_SAMPLES.replace(Some(self.state.samples.clone()));
+        let _ = ADC_SAMPLES.replace(Some(self.state.samples));
     }
 
     fn process_frame(&mut self) -> anyhow::Result<()> {
