@@ -24,7 +24,7 @@ pub struct MqttConfig {
 pub struct MqttTask(MqttConfig);
 
 impl MqttTask {
-    pub fn init() -> anyhow::Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
         Ok(Self(NVStore::get("mqtt")?.unwrap_or_default()))
     }
 
@@ -48,13 +48,25 @@ impl MqttTask {
             });
 
             let wifi_topic = format!("{}/wifi", self.0.status_topic);
+            let stats_topic = format!("{}/stats", self.0.status_topic);
             log::info!("Starting MQTT Status Thread");
             let _update_t = thread::spawn(move || loop {
-                let wifi_state = match crate::WIFI_STATE.try_lock() {
-                    Ok(wifi_state) => wifi_state.to_string(),
-                    Err(_) => "<Unknown>".to_string(),
-                };
-                let _ = StaticMqttManager::publish(&wifi_topic, wifi_state.as_bytes(), false);
+                if let Ok(wifi_state) = crate::WIFI_STATE.try_lock() {
+                    let _ = StaticMqttManager::publish(
+                        &wifi_topic,
+                        wifi_state.to_string().as_bytes(),
+                        false,
+                    );
+                }
+                if let Ok(stats) = crate::adc::ADC_STATS.try_lock() {
+                    if let Some(ref stats) = *stats {
+                        let _ = StaticMqttManager::publish(
+                            &stats_topic,
+                            stats.to_string().as_bytes(),
+                            false,
+                        );
+                    }
+                }
                 thread::sleep(Duration::from_secs(30));
             });
         }
@@ -75,6 +87,22 @@ impl MqttTask {
         } else {
             Ok(0)
         }
+    }
+
+    pub fn stats_msg(&self) -> anyhow::Result<u32> {
+        if self.0.enabled {
+            let stats_topic = format!("{}/ring_stats", self.0.status_topic);
+            if let Ok(stats) = crate::adc::ADC_STATS.try_lock() {
+                if let Some(ref stats) = *stats {
+                    return StaticMqttManager::publish(
+                        &stats_topic,
+                        stats.to_string().as_bytes(),
+                        false,
+                    );
+                }
+            }
+        }
+        Ok(0)
     }
 
     pub fn add_handlers(

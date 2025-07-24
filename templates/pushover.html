@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Pushover Config{% endblock %}
+
+{% block body %}
+<h1>{{ title }}</h1>
+    <div class="form-container" style="max-width: 800px">
+    <form action="/pushover" method="POST">
+        <div class="form-group">
+            <label for="url">Pushover URL:</label>
+            <input type="text" name="url" value="{{ config.url }}" required/>
+        </div>
+        <div class="form-group">
+            <label for="client_id">API Token:</label>
+            <input type="text" name="token" value="{{ config.token }}" required/>
+        </div>
+        <div class="form-group">
+            <label for="ring_topic">User Token:</label>
+            <input type="text" name="user" value="{{ config.user}}" required/>
+        </div>
+        <div class="form-group">
+            <label for="status_topic">Ring Message::</label>
+            <input type="text" name="ring_message" value="{{ config.ring_message }}" required/>
+        </div>
+        <div class="form-group">
+            <label for="enabled">Enabled:</label>
+            <input type="checkbox" name="enabled" value="true" {% if config.enabled %}checked{% endif %} />
+        </div>
+        <button class="button" type="submit" style="flex: 0 0 auto">
+            Update
+        </button>
+    </form>
+    </div>
+{% endblock %}
+
+{% block head %}
+{% endblock %}
+
+{% block navbar %}
+    <nav class="navbar">
+      <a href="/" class="navbar-brand">{{ navbar.title }}</a>
+
+        <!-- Mobile menu button -->
+        <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+        <!-- Navigation links -->
+        <ul class="navbar-links" id="navbarLinks">
+          {% for link in navbar.links %}
+            <li class="nav-item">
+              <a href="{{ link.url }}" class="nav-link">{{ link.label }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+    </nav>
+{% endblock %}
+

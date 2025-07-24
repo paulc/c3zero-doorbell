@@ -19,8 +19,9 @@ use doorbell::wifi::{APConfig, APStore, WifiManager, WifiState};
 use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 
 mod adc;
-mod alert;
 mod led_task;
+mod mqtt;
+mod pushover;
 mod stats;
 
 const AP_SSID: &str = "ESP32C3-AP";
@@ -45,15 +46,19 @@ pub const NAVBAR: NavBar = NavBar {
     links: &[
         NavLink {
             url: "/wifi",
-            label: "Wifi Configuration",
+            label: "Wifi",
         },
         NavLink {
             url: "/mqtt",
-            label: "MQTT Configuration",
+            label: "MQTT",
+        },
+        NavLink {
+            url: "/pushover",
+            label: "Pushover",
         },
         NavLink {
             url: "/ota_page",
-            label: "OTA Update",
+            label: "OTA",
         },
         NavLink {
             url: "/reset_page",
@@ -134,8 +139,12 @@ fn main() -> anyhow::Result<()> {
     web.add_handler("/adc/debug/off", Method::Get, adc::adc_debug_off_handler)?;
 
     // MQTT
-    let mqtt_task = alert::MqttTask::init()?;
+    let mqtt_task = mqtt::MqttTask::new()?;
     mqtt_task.add_handlers(&mut web, NAVBAR)?;
+
+    // Pushover
+    let mut pushover = pushover::PushoverSender::new()?;
+    pushover.add_handlers(&mut web, NAVBAR)?;
 
     // Start watchdog after initialisation
     let mut watchdog = twdt_driver.watch_current_task()?;
@@ -201,6 +210,8 @@ fn main() -> anyhow::Result<()> {
                             log::info!("adc_rx :: {msg:?}");
                             led_tx.send(led_task::LedMessage::Ring(true))?;
                             mqtt_task.ring_msg(true)?;
+                            pushover.send_ring_msg()?;
+                            mqtt_task.stats_msg()?;
                         }
                         adc::RingMessage::RingStop => {
                             log::info!("adc_rx :: {msg:?}");
@@ -209,7 +220,7 @@ fn main() -> anyhow::Result<()> {
                         }
                     },
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
-                    Err(e) => log::error!("ERROR :: adc_rx :: {e:?}"),
+                    Err(e) => log::error!("ERROR :: adc_rx :: {e}"),
                 }
                 led_tx.send(led_task::LedMessage::Flash(colour::BLUE))?;
             }

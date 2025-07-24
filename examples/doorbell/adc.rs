@@ -10,13 +10,14 @@ use crate::stats;
 
 pub const ADC_SAMPLE_RATE: u32 = 1000; // 1kHz sample rate
 pub const ADC_BUFFER_LEN: usize = 50; // 50ms sample buffer
-pub const ADC_MIN_THRESHOLD: f64 = 0.1; // If Hall-Effect sensor is on we should see Vcc/2
+pub const ADC_MIN_THRESHOLD: f32 = 0.1; // If Hall-Effect sensor is on we should see Vcc/2
                                         // when bell is off - if this is below threshold
                                         // we assume that sensor is powered off
 pub const THRESHOLD_BUFFER: usize = 5; // Average std-dev threshold over this number of frames
 
 pub static ADC_STATS: Mutex<Option<Stats>> = Mutex::new(None);
 pub static ADC_DEBUG: Mutex<bool> = Mutex::new(false);
+pub static ADC_SAMPLES: Mutex<Option<[f32; ADC_BUFFER_LEN]>> = Mutex::new(None);
 
 pub type AdcTimer = esp_idf_hal::timer::TIMER00;
 pub type AdcDevice = esp_idf_hal::adc::ADC1;
@@ -68,9 +69,9 @@ pub enum RingMessage {
 pub struct Stats {
     pub count: usize,
     pub elapsed: u64,
-    pub mean: f64,
-    pub stddev: f64,
-    pub threshold: f64,
+    pub mean: f32,
+    pub stddev: f32,
+    pub threshold: f32,
     pub ring: bool,
 }
 
@@ -87,10 +88,10 @@ impl std::fmt::Display for Stats {
 // --- IMPLEMENTATION ---
 
 struct AdcState {
-    samples: [f64; ADC_BUFFER_LEN],
+    samples: [f32; ADC_BUFFER_LEN],
     ring_state: bool,
     debounce: [bool; 3],
-    prev: [f64; THRESHOLD_BUFFER],
+    prev: [f32; THRESHOLD_BUFFER],
     ticks: u64,
     count: usize,
 }
@@ -98,10 +99,10 @@ struct AdcState {
 impl AdcState {
     fn new() -> Self {
         AdcState {
-            samples: [0_f64; ADC_BUFFER_LEN],
+            samples: [0_f32; ADC_BUFFER_LEN],
             ring_state: false,
             debounce: [false; 3],
-            prev: [1.0_f64; THRESHOLD_BUFFER],
+            prev: [1.0_f32; THRESHOLD_BUFFER],
             ticks: 0_u64,
             count: 0_usize,
         }
@@ -146,6 +147,7 @@ impl<'a> AdcTask<'a> {
             state: AdcState::new(),
         })
     }
+
     fn get_frame(&mut self) {
         let mut frame_len = 0_usize;
         let mut samples = [AdcMeasurement::default(); ADC_BUFFER_LEN];
@@ -156,9 +158,9 @@ impl<'a> AdcTask<'a> {
             {
                 Ok(n) => {
                     // We dont always get a full frame from the ADC so fill up
-                    // samples_f64 with the data we do have
+                    // samples with the data we do have
 
-                    // Make sure we dont overrun samples_f64 array
+                    // Make sure we dont overrun samples array
                     let n = if frame_len + n > ADC_BUFFER_LEN {
                         ADC_BUFFER_LEN - frame_len
                     } else {
@@ -168,7 +170,7 @@ impl<'a> AdcTask<'a> {
                     // Append frame to output (ignore annoying clippy warning)
                     #[allow(clippy::needless_range_loop)]
                     for i in 0..n {
-                        self.state.samples[frame_len + i] = samples[i].data() as f64 / 4096_f64;
+                        self.state.samples[frame_len + i] = samples[i].data() as f32 / 4096_f32;
                     }
                     frame_len += n;
                 }
@@ -177,7 +179,10 @@ impl<'a> AdcTask<'a> {
                 }
             }
         }
+        // Save last frame in ADC_SAMPLES
+        let _ = ADC_SAMPLES.replace(Some(self.state.samples.clone()));
     }
+
     fn process_frame(&mut self) -> anyhow::Result<()> {
         let (mean, stddev) = stats::stats(&self.state.samples);
         let (ring, threshold) = stats::check_ring(mean, stddev, &mut self.state.prev);
