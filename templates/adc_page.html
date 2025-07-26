@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}ADC Data{% endblock %}
+
+{% block head %}
+    <style>
+        .status {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        #waveformCanvas {
+          border: 1px solid #ccc;
+          margin-top: 20px;
+          margin-bottom: 10px;
+          background-color: #f9f9f9;
+        }
+
+    </style>
+{% endblock %}
+
+{% block body %}
+    <div class="container">
+
+        <h1>ADC Data</h3>
+
+        <div id="status" class="status disconnected">Disconnected</div>
+
+        <div>
+            <button class="button" id="connectBtn">Connect</button>
+            <button class="button danger" id="disconnectBtn">Disconnect</button>
+        </div>
+
+        <canvas id="waveformCanvas" width="800" height="300"></canvas>
+
+    </div>
+
+    <script>
+        // DOM elements
+        const statusElement = document.getElementById('status');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const canvas = document.getElementById('waveformCanvas');
+
+        // SSE variables
+        let eventSource;
+        const sseUrl = '/adc/buffer';
+
+        // Update connection status
+        function updateStatus(connected, frame) {
+            if (connected) {
+              statusElement.textContent = frame ? `Connected: frame: [${frame}]` : 'Connected';
+                statusElement.className = 'status connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                statusElement.textContent = 'Disconnected';
+                statusElement.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        // Connect to SSE
+        function connectToSSE() {
+            if (eventSource) {
+                return; // Already connected
+            }
+
+            eventSource = new EventSource(sseUrl);
+
+            eventSource.onopen = () => {
+                updateStatus(true);
+                console.log('SSE connection opened');
+            };
+
+            eventSource.onerror = () => {
+                console.log('SSE connection error');
+                updateStatus(false);
+                eventSource.close();
+                eventSource = null;
+            };
+
+            // Generic message handler
+            eventSource.onmessage = (event) => {
+                console.log(`Message: ${event.data}`);
+            };
+
+            // Specific event type handler (if your server uses custom event types)
+            eventSource.addEventListener('data', (event) => {
+                const data = JSON.parse(event.data);
+                updateStatus(true, data.count);
+                plotWaveform(canvas, data.samples);
+            });
+
+            // You can add more event listeners for different event types
+            eventSource.addEventListener('status', (event) => {
+                console.log(`Status: ${event.data}`);
+            });
+        }
+
+        // Disconnect from SSE
+        function disconnectFromSSE() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+                console.log('SSE connection closed');
+                updateStatus(false);
+            }
+        }
+
+        // Button event listeners
+        connectBtn.addEventListener('click', connectToSSE);
+        disconnectBtn.addEventListener('click', disconnectFromSSE);
+
+        // Initialize
+        updateStatus(false);
+        disconnectBtn.disabled = true;
+
+        // Clean up when page unloads
+        window.addEventListener('beforeunload', () => {
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+
+        /**
+         * Draws a waveform on a canvas element with 0 at bottom
+         * @param {HTMLCanvasElement} canvas - The canvas element to draw on
+         * @param {number[]} waveformData - Array of numbers between 0 and 1
+         * @param {object} [options] - Optional styling parameters
+         * @param {string} [options.waveColor='#3498db'] - Color of the waveform
+         * @param {string} [options.fillColor='rgba(52, 152, 219, 0.2)'] - Fill color
+         * @param {number} [options.lineWidth=2] - Line width of the waveform
+         * @param {boolean} [options.showAxis=true] - Whether to show the base axis
+         * @param {string} [options.axisColor='#95a5a6'] - Color of the base axis
+         * @param {number} [options.amplitudeScale=1.0] - Scaling factor for amplitude (0-1)
+         */
+        function plotWaveform(canvas, waveformData, options = {}) {
+            // Merge options with defaults
+            const {
+                waveColor = '#3498db',
+                fillColor = 'rgba(52, 152, 219, 0.2)',
+                lineWidth = 2,
+                showAxis = true,
+                axisColor = '#95a5a6',
+                amplitudeScale = 1.0
+            } = options;
+
+            const ctx = canvas.getContext('2d');
+
+            // Clear previous drawing
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Calculate dimensions and spacing
+            const width = canvas.width;
+            const height = canvas.height;
+            const baseY = height; // Bottom of canvas
+            const dataPoints = waveformData.length;
+            const pointSpacing = width / (dataPoints - 1);
+            const amplitude = height * amplitudeScale;
+
+            // Draw the waveform
+            ctx.beginPath();
+            ctx.strokeStyle = waveColor;
+            ctx.lineWidth = lineWidth;
+            ctx.fillStyle = fillColor;
+
+            // Move to first point
+            ctx.moveTo(0, baseY - waveformData[0] * amplitude);
+
+            // Draw lines to subsequent points
+            for (let i = 1; i < dataPoints; i++) {
+                const x = i * pointSpacing;
+                const y = baseY - waveformData[i] * amplitude;
+                ctx.lineTo(x, y);
+            }
+
+            // Close the path for a filled waveform
+            if (fillColor !== 'transparent') {
+                ctx.lineTo(width, baseY); // Bottom right
+                ctx.lineTo(0, baseY);    // Bottom left
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            ctx.stroke();
+
+            // Draw base axis if enabled
+            if (showAxis) {
+              ctx.strokeStyle = axisColor;
+              ctx.lineWidth = 1;
+              ctx.textAlign = 'right';
+              ctx.textBaseline = 'middle';
+              ctx.font = '10px Arial';
+
+              // Left markings
+              for (let y = 0; y <= 1; y += 0.25) {
+                  const yPos = baseY - y * amplitude;
+                  ctx.beginPath();
+                  ctx.moveTo(0, yPos);
+                  ctx.lineTo(5, yPos);
+                  ctx.stroke();
+                  ctx.fillText(y.toFixed(2), -5, yPos);
+              }
+
+              // Right markings
+              ctx.textAlign = 'left';
+              for (let y = 0; y <= 1; y += 0.25) {
+                  const yPos = baseY - y * amplitude;
+                  ctx.beginPath();
+                  ctx.moveTo(width, yPos);
+                  ctx.lineTo(width-5, yPos);
+                  ctx.stroke();
+                  ctx.fillText(y.toFixed(2), width+5, yPos);
+              }
+            }
+        }
+
+
+
+    </script>
+
+{% endblock %}
+
+{% block navbar %}
+    <nav class="navbar">
+      <a href="/" class="navbar-brand">{{ navbar.title }}</a>
+
+        <!-- Mobile menu button -->
+        <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+        <!-- Navigation links -->
+        <ul class="navbar-links" id="navbarLinks">
+          {% for link in navbar.links %}
+            <li class="nav-item">
+              <a href="{{ link.url }}" class="nav-link">{{ link.label }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+    </nav>
+{% endblock %}
+

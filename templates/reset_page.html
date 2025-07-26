@@ -4,10 +4,10 @@
 
 {% block body %}
     <div class="form-container">
-      <h2>Reboot Device</h2>
+      <h2>Reset Device</h2>
       <button class="button" id="checkButton">Check Device</button>
       <button class="button danger" id="rebootButton">Reboot Device</button>
-      <p id="status">Status: </p>
+      <p id="status"></p>
     </div>
 
     <script>
@@ -21,7 +21,7 @@
           const startTime = Date.now();
           let isDeviceUp = false;
 
-          statusDisplay.textContent = "Status: Sending reboot request...";
+          statusDisplay.textContent = "Sending reboot request...";
 
           try {
             // Step 1: Send reboot request
@@ -31,7 +31,7 @@
               throw new Error(`Reboot failed (HTTP ${rebootResponse.status})`);
             }
 
-            statusDisplay.textContent = "Status: Reboot command sent. Waiting for device...";
+            statusDisplay.textContent = "Reboot command sent. Waiting for device...";
 
             // Step 2: Poll until device is back or timeout
 
@@ -47,7 +47,7 @@
                     .then((r) => {
                         if (r.ok) {
                             isDeviceUp = true;
-                            r.text().then((msg) => statusDisplay.textContent = `Status: Device Online [${msg}]`);
+                            r.text().then((msg) => statusDisplay.textContent = `Device Online [${r.status} ${r.statusText}]`);
                         }
                     })
                     .catch((e) => {
@@ -57,7 +57,7 @@
                 if (isDeviceUp) {
                     break;
                 } else {
-                    statusDisplay.textContent = `Status: Reboot command sent. Waiting for device... ${count}`;
+                    statusDisplay.textContent = `Reboot command sent. Waiting for device... ${count}`;
                     await new Promise(resolve => setTimeout(resolve, interval));
                 }
             }
@@ -79,13 +79,13 @@
             fetch(check_url, { signal: controller.signal })
                 .then((r) => {
                     if (r.ok) {
-                        r.text().then((msg) => statusDisplay.textContent = `Status: [${r.status} ${r.statusText}] ${msg}`);
+                        r.text().then((msg) => statusDisplay.textContent = `Device Online: [${r.status} ${r.statusText}] ${msg}`);
                     } else {
-                        statusDisplay.textContent = `Status: [${r.status} ${r.statusText}]`;
+                        statusDisplay.textContent = `Device Online: [${r.status} ${r.statusText}]`;
                     }
                 })
                 .catch((e) => {
-                    statusDisplay.textContent = `Status: Fetch Error: ${e}`;
+                    statusDisplay.textContent = `Fetch Error: ${e}`;
                 });
         });
     </script>

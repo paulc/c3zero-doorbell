@@ -22,7 +22,6 @@ mod adc;
 mod led_task;
 mod mqtt;
 mod pushover;
-mod stats;
 
 const AP_SSID: &str = "ESP32C3-AP";
 const AP_PASSWORD: &str = "password";
@@ -59,6 +58,10 @@ pub const NAVBAR: NavBar = NavBar {
         NavLink {
             url: "/ota_page",
             label: "OTA",
+        },
+        NavLink {
+            url: "/adc",
+            label: "ADC",
         },
         NavLink {
             url: "/reset_page",
@@ -137,6 +140,8 @@ fn main() -> anyhow::Result<()> {
 
     web.add_handler("/adc/debug/on", Method::Get, adc::adc_debug_on_handler)?;
     web.add_handler("/adc/debug/off", Method::Get, adc::adc_debug_off_handler)?;
+    web.add_handler("/adc/buffer", Method::Get, adc::adc_get_buffer)?;
+    web.add_handler("/adc", Method::Get, adc::make_adc_page(NAVBAR))?;
 
     // MQTT
     let mqtt_task = mqtt::MqttTask::new()?;

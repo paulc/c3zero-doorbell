@@ -7,6 +7,11 @@ use std::array;
 use std::sync::{mpsc, Mutex};
 use std::thread;
 
+use askama::Template;
+use serde::Serialize;
+
+use doorbell::web::NavBar;
+
 const ADC_SAMPLE_RATE: u32 = 1000; // 1kHz sample rate
 const ADC_BUFFER_LEN: usize = 50; // 50ms sample buffer
 const ADC_MIN_THRESHOLD: f32 = 0.1; // If Hall-Effect sensor is on we should see Vcc/2
@@ -18,47 +23,11 @@ const DEBOUNCE: usize = 3; // Number of debounce steps
 
 pub static ADC_STATS: Mutex<Option<Stats>> = Mutex::new(None);
 pub static ADC_DEBUG: Mutex<bool> = Mutex::new(false);
-pub static ADC_SAMPLES: Mutex<Option<[f32; ADC_BUFFER_LEN]>> = Mutex::new(None);
+pub static ADC_SAMPLES: Mutex<Option<(usize, [f32; ADC_BUFFER_LEN])>> = Mutex::new(None);
 
 pub type AdcTimer = esp_idf_hal::timer::TIMER00;
 pub type AdcDevice = esp_idf_hal::adc::ADC1;
 pub type AdcPin = esp_idf_hal::gpio::Gpio4;
-
-pub fn adc_task(
-    timer: esp_idf_hal::timer::TIMER00,
-    adc: esp_idf_hal::adc::ADC1,
-    adc_pin: esp_idf_hal::gpio::Gpio4,
-    tx: mpsc::Sender<RingMessage>,
-) -> anyhow::Result<thread::JoinHandle<anyhow::Result<()>>> {
-    thread::Builder::new()
-        .stack_size(8192)
-        .spawn(move || {
-            let mut adc = AdcTask::new(timer, adc, adc_pin, tx)?;
-            loop {
-                adc.get_frame();
-                adc.process_frame()?;
-            }
-        })
-        .map_err(|e| anyhow::anyhow!("adc_task: {e}"))
-}
-
-pub fn adc_debug_on_handler(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
-    ADC_DEBUG
-        .replace(true)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let mut response = request.into_ok_response()?;
-    response.write("ADC_DEBUG: On\n".as_bytes())?;
-    Ok::<(), anyhow::Error>(())
-}
-
-pub fn adc_debug_off_handler(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
-    ADC_DEBUG
-        .replace(false)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let mut response = request.into_ok_response()?;
-    response.write("ADC_DEBUG: Off\n".as_bytes())?;
-    Ok::<(), anyhow::Error>(())
-}
 
 #[derive(Debug)]
 pub enum RingMessage {
@@ -66,7 +35,7 @@ pub enum RingMessage {
     RingStop,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Stats {
     pub count: usize,
     pub elapsed: u64,
@@ -84,6 +53,24 @@ impl std::fmt::Display for Stats {
             self.count, self.elapsed, self.mean, self.stddev, self.threshold, self.ring
         )
     }
+}
+
+pub fn adc_task(
+    timer: esp_idf_hal::timer::TIMER00,
+    adc: esp_idf_hal::adc::ADC1,
+    adc_pin: esp_idf_hal::gpio::Gpio4,
+    tx: mpsc::Sender<RingMessage>,
+) -> anyhow::Result<thread::JoinHandle<anyhow::Result<()>>> {
+    thread::Builder::new()
+        .stack_size(8192)
+        .spawn(move || {
+            let mut adc = AdcTask::new(timer, adc, adc_pin, tx)?;
+            loop {
+                adc.get_frame();
+                adc.process_frame()?;
+            }
+        })
+        .map_err(|e| anyhow::anyhow!("adc_task: {e}"))
 }
 
 // --- IMPLEMENTATION ---
@@ -181,7 +168,7 @@ impl<'a> AdcTask<'a> {
             }
         }
         // Save last frame in ADC_SAMPLES
-        let _ = ADC_SAMPLES.replace(Some(self.state.samples));
+        let _ = ADC_SAMPLES.replace(Some((self.state.count, self.state.samples)));
     }
 
     fn process_frame(&mut self) -> anyhow::Result<()> {
@@ -212,7 +199,7 @@ impl<'a> AdcTask<'a> {
                 if !ring {
                     log::info!("Ring: {ring} Debounce: {:?}", self.state.debounce)
                 }
-                if self.state.debounce.iter().all(|&v| v == false) {
+                if self.state.debounce.iter().all(|&v| !v) {
                     self.state.ring_state = false;
                     self.tx.send(RingMessage::RingStop).unwrap();
                 }
@@ -221,7 +208,7 @@ impl<'a> AdcTask<'a> {
                 if ring {
                     log::info!("Ring: {ring} Debounce: {:?}", self.state.debounce)
                 }
-                if self.state.debounce.iter().all(|&v| v == true) {
+                if self.state.debounce.iter().all(|&v| v) {
                     self.state.ring_state = true;
                     self.tx.send(RingMessage::RingStart(s)).unwrap();
                 }
@@ -263,7 +250,77 @@ pub fn check_ring(
         // Update threshold buffer if above ADC_MIN_THRESHOLD and ring not deteced
         shift_left(prev, stddev)
     } else {
-        prev.clone()
+        *prev
     };
     (ring, threshold, updated_threshold)
+}
+
+// HTTP Handlers
+
+pub fn adc_debug_on_handler(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
+    ADC_DEBUG
+        .replace(true)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let mut response = request.into_ok_response()?;
+    response.write("ADC_DEBUG: On\n".as_bytes())?;
+    Ok::<(), anyhow::Error>(())
+}
+
+pub fn adc_debug_off_handler(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
+    ADC_DEBUG
+        .replace(false)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let mut response = request.into_ok_response()?;
+    response.write("ADC_DEBUG: Off\n".as_bytes())?;
+    Ok::<(), anyhow::Error>(())
+}
+
+pub fn adc_get_buffer(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
+    let mut response = request.into_response(
+        200,
+        Some("OK"),
+        &[
+            ("Content-Type", "text/event-stream"),
+            ("Connection", "keep-alive"),
+            ("Access-Control-Allow-Origin", "*"),
+        ],
+    )?;
+    loop {
+        if let Some((count, samples)) = ADC_SAMPLES.replace(None)? {
+            let json = format!(
+                "event: data\r\ndata: {{\"count\":{count},\"samples\":[{}]}}\r\n\r\n",
+                samples
+                    .iter()
+                    .map(|s| format!("{s:.3}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+            response.write(json.as_bytes())?;
+        }
+        response.flush()?;
+        std::thread::sleep(std::time::Duration::from_millis(
+            (ADC_SAMPLE_RATE / ADC_BUFFER_LEN as u32) as u64,
+        ));
+    }
+}
+
+#[derive(Template)]
+#[template(path = "adc_page.html")]
+struct AdcPage {
+    navbar: NavBar<'static>,
+}
+
+pub fn make_adc_page(
+    navbar: NavBar<'static>,
+) -> impl for<'r> Fn(Request<&mut EspHttpConnection<'r>>) -> anyhow::Result<()> + Send + 'static {
+    move |request| {
+        let sse_page = AdcPage {
+            navbar: navbar.clone(),
+        };
+        let mut response = request.into_response(200, Some("OK"), &[])?;
+        let html = sse_page.render()?;
+        response.write(html.as_bytes())?;
+
+        Ok::<(), anyhow::Error>(())
+    }
 }
