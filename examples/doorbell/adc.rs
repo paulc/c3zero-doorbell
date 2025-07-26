@@ -3,17 +3,18 @@ use esp_idf_hal::timer::TimerDriver;
 use esp_idf_svc::hal::adc::{AdcContConfig, AdcContDriver, AdcMeasurement, Attenuated};
 use esp_idf_svc::http::server::{EspHttpConnection, Request};
 
+use std::array;
 use std::sync::{mpsc, Mutex};
 use std::thread;
 
-use crate::stats;
-
-pub const ADC_SAMPLE_RATE: u32 = 1000; // 1kHz sample rate
-pub const ADC_BUFFER_LEN: usize = 50; // 50ms sample buffer
-pub const ADC_MIN_THRESHOLD: f32 = 0.1; // If Hall-Effect sensor is on we should see Vcc/2
-                                        // when bell is off - if this is below threshold
-                                        // we assume that sensor is powered off
-pub const THRESHOLD_BUFFER: usize = 5; // Average std-dev threshold over this number of frames
+const ADC_SAMPLE_RATE: u32 = 1000; // 1kHz sample rate
+const ADC_BUFFER_LEN: usize = 50; // 50ms sample buffer
+const ADC_MIN_THRESHOLD: f32 = 0.1; // If Hall-Effect sensor is on we should see Vcc/2
+                                    // when bell is off - if this is below threshold
+                                    // we assume that sensor is powered off
+const THRESHOLD_BUFFER: usize = 5; // Average std-dev threshold over this number of frames
+const THRESHOLD_TRIGGER: f32 = 2.5; // What level above threshold to trigger ring
+const DEBOUNCE: usize = 3; // Number of debounce steps
 
 pub static ADC_STATS: Mutex<Option<Stats>> = Mutex::new(None);
 pub static ADC_DEBUG: Mutex<bool> = Mutex::new(false);
@@ -90,7 +91,7 @@ impl std::fmt::Display for Stats {
 struct AdcState {
     samples: [f32; ADC_BUFFER_LEN],
     ring_state: bool,
-    debounce: [bool; 3],
+    debounce: [bool; DEBOUNCE],
     prev: [f32; THRESHOLD_BUFFER],
     ticks: u64,
     count: usize,
@@ -184,8 +185,9 @@ impl<'a> AdcTask<'a> {
     }
 
     fn process_frame(&mut self) -> anyhow::Result<()> {
-        let (mean, stddev) = stats::stats(&self.state.samples);
-        let (ring, threshold) = stats::check_ring(mean, stddev, &mut self.state.prev);
+        let (mean, stddev) = stats(&self.state.samples);
+        let (ring, threshold, updated) = check_ring(mean, stddev, &self.state.prev);
+        self.state.prev = updated;
 
         let now = self.timer.counter()?;
         let elapsed = now - self.state.ticks;
@@ -204,13 +206,13 @@ impl<'a> AdcTask<'a> {
             log::info!("{s}");
         };
 
-        self.state.debounce = [self.state.debounce[1], self.state.debounce[2], ring];
+        self.state.debounce = shift_left(&self.state.debounce, ring);
         match self.state.ring_state {
             true => {
                 if !ring {
                     log::info!("Ring: {ring} Debounce: {:?}", self.state.debounce)
                 }
-                if self.state.debounce == [false, false, false] {
+                if self.state.debounce.iter().all(|&v| v == false) {
                     self.state.ring_state = false;
                     self.tx.send(RingMessage::RingStop).unwrap();
                 }
@@ -219,7 +221,7 @@ impl<'a> AdcTask<'a> {
                 if ring {
                     log::info!("Ring: {ring} Debounce: {:?}", self.state.debounce)
                 }
-                if self.state.debounce == [true, true, true] {
+                if self.state.debounce.iter().all(|&v| v == true) {
                     self.state.ring_state = true;
                     self.tx.send(RingMessage::RingStart(s)).unwrap();
                 }
@@ -231,4 +233,37 @@ impl<'a> AdcTask<'a> {
 
         Ok(())
     }
+}
+
+fn shift_left<T: Copy, const N: usize>(a: &[T; N], b: T) -> [T; N] {
+    array::from_fn(|i| if i == N - 1 { b } else { a[i + 1] })
+}
+
+pub fn stats(buf: &[f32; ADC_BUFFER_LEN]) -> (f32, f32) {
+    let mean = buf.iter().sum::<f32>() / ADC_BUFFER_LEN as f32;
+    let var = buf
+        .iter()
+        .map(|v| {
+            let diff = mean - *v;
+            diff * diff
+        })
+        .sum::<f32>();
+    let var = var / ADC_BUFFER_LEN as f32;
+    (mean, var.sqrt())
+}
+
+pub fn check_ring(
+    mean: f32,
+    stddev: f32,
+    prev: &[f32; THRESHOLD_BUFFER],
+) -> (bool, f32, [f32; THRESHOLD_BUFFER]) {
+    let threshold = prev.iter().sum::<f32>() / prev.len() as f32;
+    let ring = stddev > threshold * THRESHOLD_TRIGGER;
+    let updated_threshold = if mean > ADC_MIN_THRESHOLD && !ring {
+        // Update threshold buffer if above ADC_MIN_THRESHOLD and ring not deteced
+        shift_left(prev, stddev)
+    } else {
+        prev.clone()
+    };
+    (ring, threshold, updated_threshold)
 }

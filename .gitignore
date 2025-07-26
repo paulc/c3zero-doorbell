@@ -4,3 +4,5 @@
 /Cargo.lock
 *.swp
 ota-bin
+.DS_Store
+pcb/*/*-backups
