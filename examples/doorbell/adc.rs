@@ -23,7 +23,7 @@ const DEBOUNCE: usize = 3; // Number of debounce steps
 
 pub static ADC_STATS: Mutex<Option<Stats>> = Mutex::new(None);
 pub static ADC_DEBUG: Mutex<bool> = Mutex::new(false);
-pub static ADC_SAMPLES: Mutex<Option<(usize, [f32; ADC_BUFFER_LEN])>> = Mutex::new(None);
+pub static ADC_DATA: Mutex<Option<(Stats, [f32; ADC_BUFFER_LEN])>> = Mutex::new(None);
 
 pub type AdcTimer = esp_idf_hal::timer::TIMER00;
 pub type AdcDevice = esp_idf_hal::adc::ADC1;
@@ -167,8 +167,6 @@ impl<'a> AdcTask<'a> {
                 }
             }
         }
-        // Save last frame in ADC_SAMPLES
-        let _ = ADC_SAMPLES.replace(Some((self.state.count, self.state.samples)));
     }
 
     fn process_frame(&mut self) -> anyhow::Result<()> {
@@ -179,7 +177,7 @@ impl<'a> AdcTask<'a> {
         let now = self.timer.counter()?;
         let elapsed = now - self.state.ticks;
 
-        let s = Stats {
+        let stats = Stats {
             count: self.state.count,
             elapsed,
             mean,
@@ -188,9 +186,9 @@ impl<'a> AdcTask<'a> {
             ring,
         };
 
-        ADC_STATS.replace(Some(s.clone()))?;
+        ADC_STATS.replace(Some(stats.clone()))?;
         if ADC_DEBUG.get_cloned().unwrap_or(false) {
-            log::info!("{s}");
+            log::info!("{stats}");
         };
 
         self.state.debounce = shift_left(&self.state.debounce, ring);
@@ -210,10 +208,13 @@ impl<'a> AdcTask<'a> {
                 }
                 if self.state.debounce.iter().all(|&v| v) {
                     self.state.ring_state = true;
-                    self.tx.send(RingMessage::RingStart(s)).unwrap();
+                    self.tx.send(RingMessage::RingStart(stats.clone())).unwrap();
                 }
             }
         }
+
+        // Save frame in ADC_SAMPLES
+        let _ = ADC_DATA.replace(Some((stats, self.state.samples)));
 
         self.state.count += 1;
         self.state.ticks = now;
@@ -275,7 +276,7 @@ pub fn adc_debug_off_handler(request: Request<&mut EspHttpConnection>) -> anyhow
     Ok::<(), anyhow::Error>(())
 }
 
-pub fn adc_get_buffer(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
+pub fn adc_data(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
     let mut response = request.into_response(
         200,
         Some("OK"),
@@ -286,9 +287,10 @@ pub fn adc_get_buffer(request: Request<&mut EspHttpConnection>) -> anyhow::Resul
         ],
     )?;
     loop {
-        if let Some((count, samples)) = ADC_SAMPLES.replace(None)? {
+        if let Some((stats, samples)) = ADC_DATA.replace(None)? {
+            let stats_json = serde_json::to_string(&stats)?;
             let json = format!(
-                "event: data\r\ndata: {{\"count\":{count},\"samples\":[{}]}}\r\n\r\n",
+                "event: data\r\ndata: {{\"stats\":{stats_json},\"samples\":[{}]}}\r\n\r\n",
                 samples
                     .iter()
                     .map(|s| format!("{s:.3}"))

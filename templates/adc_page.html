@@ -19,9 +19,30 @@
         }
         #waveformCanvas {
           border: 1px solid #ccc;
-          margin-top: 20px;
           margin-bottom: 10px;
           background-color: #f9f9f9;
+        }
+        .param-row {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            font-size: 0.85em;
+        }
+        .param-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .param-name {
+            color: #666;
+            margin-bottom: 2px;
+        }
+        .param-name::first-letter {
+            text-transform: uppercase;
+        }
+        .param-value {
+            font-family: monospace;
+            font-weight: bold;
         }
 
     </style>
@@ -39,6 +60,8 @@
             <button class="button danger" id="disconnectBtn">Disconnect</button>
         </div>
 
+        <div class="param-row" id="statsDisplay"></div>
+
         <canvas id="waveformCanvas" width="800" height="300"></canvas>
 
     </div>
@@ -49,15 +72,16 @@
         const connectBtn = document.getElementById('connectBtn');
         const disconnectBtn = document.getElementById('disconnectBtn');
         const canvas = document.getElementById('waveformCanvas');
+        const stats = document.getElementById('statsDisplay');
 
         // SSE variables
         let eventSource;
-        const sseUrl = '/adc/buffer';
+        const sseUrl = '/adc/data';
 
         // Update connection status
-        function updateStatus(connected, frame) {
+        function updateStatus(connected) {
             if (connected) {
-              statusElement.textContent = frame ? `Connected: frame: [${frame}]` : 'Connected';
+                statusElement.textContent = 'Connected';
                 statusElement.className = 'status connected';
                 connectBtn.disabled = true;
                 disconnectBtn.disabled = false;
@@ -97,7 +121,7 @@
             // Specific event type handler (if your server uses custom event types)
             eventSource.addEventListener('data', (event) => {
                 const data = JSON.parse(event.data);
-                updateStatus(true, data.count);
+                displayStats(data.stats);
                 plotWaveform(canvas, data.samples);
             });
 
@@ -223,6 +247,20 @@
                   ctx.fillText(y.toFixed(2), width+5, yPos);
               }
             }
+        }
+
+        function displayStats(data) {
+            const fp_keys = ["mean","stddev","threshold"];
+            stats.innerHTML = '';
+            Object.entries(data).forEach(([k,v]) => {
+                const paramEl = document.createElement('div');
+                paramEl.className = 'param-item';
+                paramEl.innerHTML = `
+                    <div class="param-name">${k}</div>
+                    <div class="param-value">${ fp_keys.includes(k) ? v.toFixed(4) : v}</div>
+                `;
+                stats.appendChild(paramEl);
+            });
         }
 
 

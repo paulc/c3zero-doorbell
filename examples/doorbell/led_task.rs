@@ -1,4 +1,5 @@
 use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
 
 use doorbell::ws2812::{colour, Rgb, Ws2812RmtSingle};
@@ -13,7 +14,7 @@ pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<LedMessage>) {
     let mut timeout: Option<u8> = None;
     let mut on = false;
     loop {
-        match led_rx.recv_timeout(Duration::from_millis(200)) {
+        match led_rx.try_recv() {
             Ok(LedMessage::Ring(v)) => {
                 log::info!(">> led_rx: {v}");
                 if v {
@@ -31,8 +32,7 @@ pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<LedMessage>) {
                     led.set(colour::OFF).unwrap();
                 }
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(e) => log::error!("led_rx error: {e}"),
+            Err(_e) => {}
         }
         // log::info!("ring={ring} timeout={timeout:?} on={on}");
         led.set(if ring && on { colour::RED } else { colour::OFF })
@@ -47,5 +47,6 @@ pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<LedMessage>) {
             Some(n) => Some(n - 1),
             None => None,
         };
+        thread::sleep(Duration::from_millis(200));
     }
 }

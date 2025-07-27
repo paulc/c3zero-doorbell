@@ -140,7 +140,7 @@ fn main() -> anyhow::Result<()> {
 
     web.add_handler("/adc/debug/on", Method::Get, adc::adc_debug_on_handler)?;
     web.add_handler("/adc/debug/off", Method::Get, adc::adc_debug_off_handler)?;
-    web.add_handler("/adc/buffer", Method::Get, adc::adc_get_buffer)?;
+    web.add_handler("/adc/data", Method::Get, adc::adc_data)?;
     web.add_handler("/adc", Method::Get, adc::make_adc_page(NAVBAR))?;
 
     // MQTT
@@ -159,6 +159,7 @@ fn main() -> anyhow::Result<()> {
         match (&WIFI_STATE.get_cloned()?, wifi.is_connected()?) {
             (WifiState::NotConnected, _) => {
                 // NotConnected - try to connect to known AP (or start local AP)
+                led_tx.send(led_task::LedMessage::Flash(colour::GREEN))?;
                 wifi.scan()?;
                 let wifi_state = wifi.try_connect(
                     &APStore::get_aps()?,
@@ -205,6 +206,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 // Flush adc_rx buffer
                 while adc_rx.try_recv().is_ok() {}
+                led_tx.send(led_task::LedMessage::Flash(colour::RED))?;
                 thread::sleep(Duration::from_millis(1000));
             }
             (WifiState::Station(_, _), true) => {
@@ -213,6 +215,7 @@ fn main() -> anyhow::Result<()> {
                     Ok(msg) => match msg {
                         adc::RingMessage::RingStart(ref _s) => {
                             log::info!("adc_rx :: {msg:?}");
+
                             led_tx.send(led_task::LedMessage::Ring(true))?;
                             mqtt_task.ring_msg(true)?;
                             pushover.send_ring_msg()?;
@@ -231,10 +234,10 @@ fn main() -> anyhow::Result<()> {
             }
             (WifiState::AP(_, _), _) => {
                 // AP Mode
-                led_tx.send(led_task::LedMessage::Flash(colour::GREEN))?;
                 // Flush adc_rx buffer
                 while adc_rx.try_recv().is_ok() {}
                 thread::sleep(Duration::from_millis(1000));
+                led_tx.send(led_task::LedMessage::Flash(colour::GREEN))?;
             }
         }
 
