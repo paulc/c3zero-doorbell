@@ -21,14 +21,16 @@ jobs:
       fail-fast: false
       matrix:
         action:
-# cargo build fails with ldproxy error
-#          - command: build
-#            args: --release
+          # cargo build fails with ldproxy error??
+          - command: build
+            args: --release
           - command: fmt
             args: --all -- --check --color always
           - command: clippy
             args: --all-targets --all-features --workspace -- -D warnings
     steps:
+      - name: Print Rust version
+        run: rustc --version
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Setup Rust
