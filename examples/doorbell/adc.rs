@@ -4,13 +4,15 @@ use esp_idf_svc::hal::adc::{AdcContConfig, AdcContDriver, AdcMeasurement, Attenu
 use esp_idf_svc::http::server::{EspHttpConnection, Request};
 
 use std::array;
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{mpsc, Mutex};
 use std::thread;
 
 use askama::Template;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use doorbell::web::NavBar;
+use doorbell::nvs::NVStore;
+use doorbell::web::{FlashMsg, NavBar};
 
 const ADC_SAMPLE_RATE: u32 = 1000; // 1kHz sample rate
 const ADC_BUFFER_LEN: usize = 50; // 50ms sample buffer
@@ -18,16 +20,23 @@ const ADC_MIN_THRESHOLD: f32 = 0.1; // If Hall-Effect sensor is on we should see
                                     // when bell is off - if this is below threshold
                                     // we assume that sensor is powered off
 const THRESHOLD_BUFFER: usize = 5; // Average std-dev threshold over this number of frames
-const THRESHOLD_TRIGGER: f32 = 2.5; // What level above threshold to trigger ring
 const DEBOUNCE: usize = 3; // Number of debounce steps
 
 pub static ADC_STATS: Mutex<Option<Stats>> = Mutex::new(None);
-pub static ADC_DEBUG: Mutex<bool> = Mutex::new(false);
 pub static ADC_DATA: Mutex<Option<(Stats, [f32; ADC_BUFFER_LEN])>> = Mutex::new(None);
+
+// Use AtomicI32 for THRESHOLD_MULTIPLIER * 1000 (translated into f32)
+pub static THRESHOLD_MULTIPLIER: AtomicI32 = AtomicI32::new(5000);
+pub static ADC_DEBUG: AtomicBool = AtomicBool::new(false);
 
 pub type AdcTimer = esp_idf_hal::timer::TIMER00;
 pub type AdcDevice = esp_idf_hal::adc::ADC1;
 pub type AdcPin = esp_idf_hal::gpio::Gpio4;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdcParams {
+    threshold_multiplier: f32,
+}
 
 #[derive(Debug)]
 pub enum RingMessage {
@@ -116,6 +125,14 @@ impl<'a> AdcTask<'a> {
         timer.enable(true)?;
         log::info!("=== Timer: {} Hz", timer.tick_hz());
 
+        // Get ADC Params from NVS (threshold)
+        if let Some(p) = NVStore::get::<AdcParams>("adc")? {
+            THRESHOLD_MULTIPLIER.store(
+                (p.threshold_multiplier * 1000_f32) as i32,
+                Ordering::Relaxed,
+            );
+        }
+
         // Setup ADC
         let adc_config = AdcContConfig {
             sample_freq: esp_idf_hal::units::Hertz(ADC_SAMPLE_RATE),
@@ -187,7 +204,7 @@ impl<'a> AdcTask<'a> {
         };
 
         ADC_STATS.replace(Some(stats.clone()))?;
-        if ADC_DEBUG.get_cloned().unwrap_or(false) {
+        if ADC_DEBUG.load(Ordering::Relaxed) {
             log::info!("{stats}");
         };
 
@@ -245,32 +262,62 @@ pub fn check_ring(
     stddev: f32,
     prev: &[f32; THRESHOLD_BUFFER],
 ) -> (bool, f32, [f32; THRESHOLD_BUFFER]) {
-    let threshold = prev.iter().sum::<f32>() / prev.len() as f32;
-    let ring = stddev > threshold * THRESHOLD_TRIGGER;
-    let updated_threshold = if mean > ADC_MIN_THRESHOLD && !ring {
+    let stdev_avg = prev.iter().sum::<f32>() / prev.len() as f32;
+    let multiplier = THRESHOLD_MULTIPLIER.load(Ordering::Relaxed) as f32 / 1000_f32;
+    let threshold = multiplier * stdev_avg;
+    let ring = stddev > threshold;
+    let prev = if mean > ADC_MIN_THRESHOLD && !ring {
         // Update threshold buffer if above ADC_MIN_THRESHOLD and ring not deteced
         shift_left(prev, stddev)
     } else {
         *prev
     };
-    (ring, threshold, updated_threshold)
+    (ring, threshold, prev)
 }
 
 // HTTP Handlers
+pub fn adc_set_params(mut request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
+    let mut buf = [0_u8; 1024];
+    let len = request.read(&mut buf)?;
+    log::info!("adc_set_params: {}", String::from_utf8_lossy(&buf[0..len]));
+
+    match serde_json::from_slice::<AdcParams>(&buf[0..len]) {
+        Ok(c) => {
+            NVStore::set::<AdcParams>("adc", &c)?;
+            THRESHOLD_MULTIPLIER.store(
+                (c.threshold_multiplier * 1000_f32) as i32,
+                Ordering::Relaxed,
+            );
+            let flash = serde_json::to_string(&FlashMsg {
+                level: "success",
+                message: "Successfully updated AdcParams",
+            })?;
+            request.into_response(
+                302,
+                Some("Successfully updated AdcParams"),
+                &[
+                    ("Location", "/adc"),
+                    ("Set-Cookie", &format!("flash_msg={flash}; path=/")),
+                ],
+            )?;
+        }
+        Err(e) => {
+            log::error!("Error: {e}");
+            request.into_status_response(400)?;
+        }
+    }
+    Ok::<(), anyhow::Error>(())
+}
 
 pub fn adc_debug_on_handler(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
-    ADC_DEBUG
-        .replace(true)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    ADC_DEBUG.store(true, Ordering::Relaxed);
     let mut response = request.into_ok_response()?;
     response.write("ADC_DEBUG: On\n".as_bytes())?;
     Ok::<(), anyhow::Error>(())
 }
 
 pub fn adc_debug_off_handler(request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
-    ADC_DEBUG
-        .replace(false)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    ADC_DEBUG.store(false, Ordering::Relaxed);
     let mut response = request.into_ok_response()?;
     response.write("ADC_DEBUG: Off\n".as_bytes())?;
     Ok::<(), anyhow::Error>(())

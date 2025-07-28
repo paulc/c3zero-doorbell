@@ -141,6 +141,7 @@ fn main() -> anyhow::Result<()> {
     web.add_handler("/adc/debug/on", Method::Get, adc::adc_debug_on_handler)?;
     web.add_handler("/adc/debug/off", Method::Get, adc::adc_debug_off_handler)?;
     web.add_handler("/adc/data", Method::Get, adc::adc_data)?;
+    web.add_handler("/adc/set_params", Method::Post, adc::adc_set_params)?;
     web.add_handler("/adc", Method::Get, adc::make_adc_page(NAVBAR))?;
 
     // MQTT
