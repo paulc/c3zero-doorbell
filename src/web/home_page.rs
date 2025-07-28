@@ -24,6 +24,30 @@ impl BuildInfo {
     }
 }
 
+pub fn get_partition_info() -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    unsafe {
+        let running_partition = esp_idf_sys::esp_ota_get_running_partition();
+        let address = (*running_partition).address;
+        let mut ota_state: esp_idf_sys::esp_ota_img_states_t = 0;
+        esp_idf_sys::esp_ota_get_state_partition(running_partition, &mut ota_state);
+        let state = match ota_state {
+            esp_idf_sys::esp_ota_img_states_t_ESP_OTA_IMG_NEW => "ESP_OTA_IMG_NEW",
+            esp_idf_sys::esp_ota_img_states_t_ESP_OTA_IMG_PENDING_VERIFY => {
+                "ESP_OTA_IMG_PENDING_VERIFY"
+            }
+            esp_idf_sys::esp_ota_img_states_t_ESP_OTA_IMG_VALID => "ESP_OTA_IMG_VALID",
+            esp_idf_sys::esp_ota_img_states_t_ESP_OTA_IMG_INVALID => "ESP_OTA_IMG_INVALID",
+            esp_idf_sys::esp_ota_img_states_t_ESP_OTA_IMG_ABORTED => "ESP_OTA_IMG_ABORTED",
+            esp_idf_sys::esp_ota_img_states_t_ESP_OTA_IMG_UNDEFINED => "ESP_OTA_IMG_UNDEFINED",
+            _ => "ERROR: UNKNOWN STATE",
+        };
+        out.push(("Partition Address".to_string(), format!("0x{address:x}")));
+        out.push(("Partition State".to_string(), state.to_string()));
+    };
+    out
+}
+
 pub static STATUS: Mutex<Option<Vec<(String, String)>>> = Mutex::new(None);
 
 #[derive(Clone, askama::Template)]
@@ -40,6 +64,8 @@ impl HomePage {
         build_info: Vec<(String, String)>,
         navbar: NavBar<'static>,
     ) -> Self {
+        let mut build_info = build_info;
+        build_info.extend(get_partition_info());
         Self {
             title,
             build_info,

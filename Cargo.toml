@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["paulc <212168+paulc@users.noreply.github.com>"]
 edition = "2021"
 resolver = "2"
-rust-version = "1.89"
+rust-version = "1.88"
 
 #[[bin]]
 #name = "doorbell"
@@ -26,7 +26,8 @@ experimental = ["esp-idf-svc/experimental"]
 
 [dependencies]
 esp-idf-sys = "0.36.1"
-esp-idf-svc = { version = "0.51", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
+# esp-idf-svc = { version = "0.51", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
+esp-idf-svc = { version = "0.51", features = ["critical-section"] }
 esp-idf-hal = { version = "0.45.2", features = ["rmt-legacy"] }
 anyhow = "1.0.98"
 log = "0.4"

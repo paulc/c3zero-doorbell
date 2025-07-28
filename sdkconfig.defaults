@@ -4,6 +4,9 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8000
 # Fix "Header fields are too long" error
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
 
+# Enable OTA Rollback
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
 # Use this to set FreeRTOS kernel tick frequency to 1000 Hz (100 Hz by default).
 # This allows to use 1 ms granularity for thread sleeps (10 ms by default).
 #CONFIG_FREERTOS_HZ=1000
