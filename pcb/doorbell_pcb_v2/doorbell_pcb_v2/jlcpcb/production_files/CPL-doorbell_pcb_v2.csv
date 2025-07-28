@@ -1,0 +1,16 @@
+Designator,Val,Package,Mid X,Mid Y,Rotation,Layer
+C1,1nF,C_0805_2012Metric_Pad1.18x1.45mm_HandSolder,155.0,-116.0,0.0,top
+C2,100nF,C_0805_2012Metric_Pad1.18x1.45mm_HandSolder,145.25,-115.0,90.0,top
+C3,470uF,CP_Elec_10x10.5,133.2,-90.0,180.0,top
+C5,470nF,C_0805_2012Metric_Pad1.18x1.45mm_HandSolder,129.25,-82.25,-90.0,top
+C7,100nF,C_0805_2012Metric_Pad1.18x1.45mm_HandSolder,133.75,-82.0375,-90.0,top
+D1,DF06S,Diode_Bridge_OnSemi_SDIP-4L,132.55,-101.55,-90.0,top
+D2,B5819,D_SOD-123,138.25,-77.0,-90.0,top
+D3,LED,LED_0805_2012Metric_Pad1.15x1.40mm_HandSolder,141.25,-80.725,90.0,top
+R1,470R,R_0805_2012Metric_Pad1.20x1.40mm_HandSolder,149.5,-109.6625,90.0,top
+R2,470R,R_0805_2012Metric_Pad1.20x1.40mm_HandSolder,152.25,-109.6625,-90.0,top
+R3,470R,R_0805_2012Metric_Pad1.20x1.40mm_HandSolder,162.5,-109.5,90.0,top
+R4,470R,R_0805_2012Metric_Pad1.20x1.40mm_HandSolder,141.25,-76.475,90.0,top
+SW1,MST22D18G2 125,SW-SMD_MST22D18G2,132.85,-113.5,90.0,top
+U1,ACS712xLCTR-05B,SOIC-8_3.9x4.9mm_P1.27mm,150.0,-116.0,90.0,top
+U2,LM78M05_TO252,TO-252-2,131.525,-74.425,90.0,top

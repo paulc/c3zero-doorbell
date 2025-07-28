@@ -1,0 +1,23 @@
+%TF.GenerationSoftware,KiCad,Pcbnew,9.0.2*%
+%TF.CreationDate,2025-07-25T15:36:06+01:00*%
+%TF.ProjectId,doorbell_pcb_v2,646f6f72-6265-46c6-9c5f-7063625f7632,rev?*%
+%TF.SameCoordinates,Original*%
+%TF.FileFunction,Profile,NP*%
+%FSLAX46Y46*%
+G04 Gerber Fmt 4.6, Leading zero omitted, Abs format (unit mm)*
+G04 Created by KiCad (PCBNEW 9.0.2) date 2025-07-25 15:36:06*
+%MOMM*%
+%LPD*%
+G01*
+G04 APERTURE LIST*
+%TA.AperFunction,Profile*%
+%ADD10C,0.050000*%
+%TD*%
+G04 APERTURE END LIST*
+D10*
+X125000000Y-55000000D02*
+X175000000Y-55000000D01*
+X175000000Y-130000000D01*
+X125000000Y-130000000D01*
+X125000000Y-55000000D01*
+M02*
