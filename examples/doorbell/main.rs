@@ -200,10 +200,13 @@ fn main() -> anyhow::Result<()> {
 
                 // Update WIFI_STATE
                 WIFI_STATE.replace(wifi_state)?;
+
+                // Update watchdog
+                watchdog.feed()?;
             }
             (WifiState::Station(ref ap, _), false) => {
-                // WiFi disconnected - try to reconnect (every 30 secs)
-                if count.is_multiple_of(30) {
+                // WiFi disconnected - try to reconnect (every 5 secs)
+                if count.is_multiple_of(5) {
                     log::error!("WIFi Disconnected: Attempting to reconnect");
                     match wifi.connect_sta(ap, 30_000) {
                         Ok(WifiState::Station(config, ip_info)) => {
@@ -223,10 +226,13 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
+
                 // Flush adc_rx buffer
                 while adc_rx.try_recv().is_ok() {}
                 led_tx.send(led_task::LedMessage::Flash(colour::RED))?;
                 thread::sleep(Duration::from_millis(1000));
+
+                // We dont update watchdog here - timeout and reset if we dont re-connect
             }
             (WifiState::Station(_, _), true) => {
                 // WiFi Online
@@ -250,6 +256,9 @@ fn main() -> anyhow::Result<()> {
                     Err(e) => log::error!("ERROR :: adc_rx :: {e}"),
                 }
                 led_tx.send(led_task::LedMessage::Flash(colour::BLUE))?;
+
+                // Update watchdog
+                watchdog.feed()?;
             }
             (WifiState::AP(_, _), _) => {
                 // AP Mode
@@ -257,11 +266,11 @@ fn main() -> anyhow::Result<()> {
                 while adc_rx.try_recv().is_ok() {}
                 thread::sleep(Duration::from_millis(1000));
                 led_tx.send(led_task::LedMessage::Flash(colour::GREEN))?;
+
+                // Update watchdog
+                watchdog.feed()?;
             }
         }
-
-        // Update watchdog
-        watchdog.feed()?;
 
         // Update counter
         count += 1;
