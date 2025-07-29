@@ -39,6 +39,20 @@ const BUILD_INFO: BuildInfo = BuildInfo {
 
 pub static WIFI_STATE: Mutex<WifiState> = Mutex::new(WifiState::NotConnected);
 
+/*
+use std::sync::atomic::{AtomicBool, Ordering};
+use doorbell::mqtt::StaticMqttManager;
+
+pub static MQTT_DEBUG: AtomicBool = AtomicBool::new(true);
+pub static MQTT_DEBUG_TOPIC: &str = "doorbell/debug";
+
+pub fn mqtt_debug(msg: &str) {
+    if MQTT_DEBUG.load(Ordering::Relaxed) {
+        let _ = StaticMqttManager::publish(MQTT_DEBUG_TOPIC, msg.as_bytes(), false);
+    }
+}
+*/
+
 // Static NavBar
 pub const NAVBAR: NavBar = NavBar {
     title: "Doorbell",
@@ -157,7 +171,11 @@ fn main() -> anyhow::Result<()> {
     let mut count = 0_usize;
 
     loop {
-        match (&WIFI_STATE.get_cloned()?, wifi.is_connected()?) {
+        let wifi_state = WIFI_STATE.get_cloned()?;
+        let wifi_connected = wifi.is_connected()?;
+        log::info!("{wifi_state} :: {wifi_connected}");
+
+        match (&wifi_state, wifi_connected) {
             (WifiState::NotConnected, _) => {
                 // NotConnected - try to connect to known AP (or start local AP)
                 led_tx.send(led_task::LedMessage::Flash(colour::GREEN))?;
@@ -219,8 +237,8 @@ fn main() -> anyhow::Result<()> {
 
                             led_tx.send(led_task::LedMessage::Ring(true))?;
                             mqtt_task.ring_msg(true)?;
-                            pushover.send_ring_msg()?;
                             mqtt_task.stats_msg()?;
+                            pushover.send_ring_msg()?;
                         }
                         adc::RingMessage::RingStop => {
                             log::info!("adc_rx :: {msg:?}");

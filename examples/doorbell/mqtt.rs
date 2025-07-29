@@ -75,6 +75,7 @@ impl MqttTask {
 
     pub fn ring_msg(&self, state: bool) -> anyhow::Result<u32> {
         if self.0.enabled {
+            log::info!("ring_msg: {state}");
             StaticMqttManager::publish(
                 &self.0.ring_topic,
                 if state {
@@ -94,6 +95,7 @@ impl MqttTask {
             let stats_topic = format!("{}/ring_stats", self.0.status_topic);
             if let Ok(stats) = crate::adc::ADC_STATS.try_lock() {
                 if let Some(ref stats) = *stats {
+                    log::info!("stats_msg: {}", stats.to_string());
                     return StaticMqttManager::publish(
                         &stats_topic,
                         stats.to_string().as_bytes(),

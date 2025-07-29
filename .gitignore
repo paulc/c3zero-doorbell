@@ -5,4 +5,5 @@
 *.swp
 ota-bin
 .DS_Store
-pcb/*/*-backups
+/pcb/doorbell_pcb/doorbell_pcb_v2/doorbell_pcb_v2-backups
+/pcb/doorbell_pcb_v2/doorbell_pcb_v2/doorbell_pcb_v2-backups
