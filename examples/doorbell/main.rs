@@ -21,7 +21,10 @@ use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 mod adc;
 mod led_task;
 mod mqtt;
+mod mqtt_debug;
 mod pushover;
+
+pub use mqtt_debug::mqtt_debug;
 
 const AP_SSID: &str = "ESP32C3-AP";
 const AP_PASSWORD: &str = "password";
@@ -38,20 +41,6 @@ const BUILD_INFO: BuildInfo = BuildInfo {
 };
 
 pub static WIFI_STATE: Mutex<WifiState> = Mutex::new(WifiState::NotConnected);
-
-/*
-use std::sync::atomic::{AtomicBool, Ordering};
-use doorbell::mqtt::StaticMqttManager;
-
-pub static MQTT_DEBUG: AtomicBool = AtomicBool::new(true);
-pub static MQTT_DEBUG_TOPIC: &str = "doorbell/debug";
-
-pub fn mqtt_debug(msg: &str) {
-    if MQTT_DEBUG.load(Ordering::Relaxed) {
-        let _ = StaticMqttManager::publish(MQTT_DEBUG_TOPIC, msg.as_bytes(), false);
-    }
-}
-*/
 
 // Static NavBar
 pub const NAVBAR: NavBar = NavBar {
