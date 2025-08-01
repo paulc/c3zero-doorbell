@@ -106,6 +106,7 @@ impl PushoverSender {
     ) -> anyhow::Result<()> {
         server.add_handler("/pushover", Method::Get, pushover_handler(&navbar))?;
         server.add_handler("/pushover", Method::Post, pushover_submit)?;
+        server.add_handler("/pushover/test", Method::Post, pushover_test)?;
         Ok(())
     }
 }
@@ -176,6 +177,49 @@ pub fn pushover_submit(
                     ("Set-Cookie", &format!("flash_msg={flash}; path=/")),
                 ],
             )?;
+        }
+    }
+    Ok::<(), anyhow::Error>(())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PushoverTest {
+    message: String,
+}
+
+pub fn pushover_test(
+    mut request: server::Request<&mut server::EspHttpConnection>,
+) -> anyhow::Result<()> {
+    let mut buf = [0_u8; 1024];
+    let len = request.read(&mut buf)?;
+
+    log::info!("pushover_test: {}", String::from_utf8_lossy(&buf[0..len]));
+
+    match serde_json::from_slice::<PushoverTest>(&buf[0..len]) {
+        Ok(t) => {
+            let mut pushover = PushoverSender::new()?;
+            let flash = match pushover.send(&t.message) {
+                Ok(_) => serde_json::to_string(&FlashMsg {
+                    level: "success",
+                    message: "Pushover Success",
+                })?,
+                Err(e) => serde_json::to_string(&FlashMsg {
+                    level: "error",
+                    message: &format!("Pushover Error: {e}"),
+                })?,
+            };
+            request.into_response(
+                302,
+                Some("Pushover Test"),
+                &[
+                    ("Location", "/pushover"),
+                    ("Set-Cookie", &format!("flash_msg={flash}; path=/")),
+                ],
+            )?;
+        }
+        Err(e) => {
+            log::error!("Error: {e}");
+            request.into_status_response(400)?;
         }
     }
     Ok::<(), anyhow::Error>(())

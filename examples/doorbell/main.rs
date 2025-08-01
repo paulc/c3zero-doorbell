@@ -162,7 +162,10 @@ fn main() -> anyhow::Result<()> {
     loop {
         let wifi_state = WIFI_STATE.get_cloned()?;
         let wifi_connected = wifi.is_connected()?;
-        log::info!("{wifi_state} :: {wifi_connected}");
+
+        if !wifi_connected {
+            log::info!("{wifi_state} :: {wifi_connected}");
+        }
 
         match (&wifi_state, wifi_connected) {
             (WifiState::NotConnected, _) => {

@@ -114,6 +114,7 @@ impl MqttTask {
     ) -> anyhow::Result<()> {
         server.add_handler("/mqtt", Method::Get, mqtt_handler(&navbar))?;
         server.add_handler("/mqtt", Method::Post, mqtt_submit)?;
+        server.add_handler("/mqtt/test", Method::Post, mqtt_test)?;
         Ok(())
     }
 }
@@ -196,6 +197,47 @@ pub fn mqtt_submit(mut request: Request<&mut EspHttpConnection>) -> anyhow::Resu
                     ("Set-Cookie", &format!("flash_msg={flash}; path=/")),
                 ],
             )?;
+        }
+    }
+    Ok::<(), anyhow::Error>(())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct MqttTest {
+    topic: String,
+    message: String,
+}
+
+pub fn mqtt_test(mut request: Request<&mut EspHttpConnection>) -> anyhow::Result<()> {
+    let mut buf = [0_u8; 1024];
+    let len = request.read(&mut buf)?;
+
+    log::info!("mqtt_test: {}", String::from_utf8_lossy(&buf[0..len]));
+
+    match serde_json::from_slice::<MqttTest>(&buf[0..len]) {
+        Ok(t) => {
+            let flash = match StaticMqttManager::publish(&t.topic, t.message.as_bytes(), false) {
+                Ok(id) => serde_json::to_string(&FlashMsg {
+                    level: "success",
+                    message: &format!("MQTT Success: {id}"),
+                })?,
+                Err(e) => serde_json::to_string(&FlashMsg {
+                    level: "error",
+                    message: &format!("MQTT Error: {e}"),
+                })?,
+            };
+            request.into_response(
+                302,
+                Some("MQTT Test"),
+                &[
+                    ("Location", "/mqtt"),
+                    ("Set-Cookie", &format!("flash_msg={flash}; path=/")),
+                ],
+            )?;
+        }
+        Err(e) => {
+            log::error!("Error: {e}");
+            request.into_status_response(400)?;
         }
     }
     Ok::<(), anyhow::Error>(())
