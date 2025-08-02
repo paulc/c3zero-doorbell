@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -10,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use doorbell::mqtt::{check_mqtt_url, MqttMessage, StaticMqttManager};
 use doorbell::nvs::NVStore;
 use doorbell::web::{FlashMsg, NavBar, WebServer};
+
+static SETTINGS_UPDATED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct MqttConfig {
@@ -124,6 +127,7 @@ impl MqttTask {
 struct MqttPage<'a> {
     title: &'a str,
     config: MqttConfig,
+    updated: bool,
     navbar: NavBar<'static>,
 }
 
@@ -137,6 +141,7 @@ pub fn mqtt_handler(
             title: "MQTT Settings",
             config: mqtt_config,
             navbar: navbar.clone(),
+            updated: SETTINGS_UPDATED.load(Ordering::Relaxed),
         };
         let mut response = request.into_response(200, Some("OK"), &[])?;
         let html = mqtt_page.render()?;
@@ -174,6 +179,9 @@ pub fn mqtt_submit(mut request: Request<&mut EspHttpConnection>) -> anyhow::Resu
                 level: "success",
                 message: "Successfully updated MQTT settings",
             })?;
+            // Set static update flag
+            SETTINGS_UPDATED.store(true, Ordering::Relaxed);
+
             request.into_response(
                 302,
                 Some("Successfully updated MQTT settings"),

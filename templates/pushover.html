@@ -20,7 +20,7 @@
         </div>
         <div class="form-group">
             <label for="status_topic">Ring Message::</label>
-            <input type="text" name="ring_message" value="{{ config.ring_message }}" required/>
+            <input type="text" name="message" value="{{ config.message }}" required/>
         </div>
         <div class="form-group">
             <label for="enabled">Enabled:</label>
@@ -30,6 +30,9 @@
             Update
         </button>
     </form>
+    {% if updated %}
+        <p class="warning">NVS configuration updated - you must restart to apply new settings</p>
+    {% endif %}
     </div>
 {% endblock %}
 

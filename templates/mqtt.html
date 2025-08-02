@@ -30,6 +30,9 @@
             Update
         </button>
     </form>
+    {% if updated %}
+        <p class="warning">NVS configuration updated - you must restart to apply new settings</p>
+    {% endif %}
     </div>
 {% endblock %}
 

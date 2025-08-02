@@ -19,6 +19,9 @@ h1 {
     text-align: center;
     font-size: 24px;
 }
+p.warning {
+    color: #f44336; /* Red */
+}
 .container {
     max-width: 800px;
     margin: 20px auto;
@@ -188,7 +191,6 @@ li ul, li ol {
     margin-top: 6px;
     margin-bottom: 6px;
 }
-
 
 /* Checkbox Container - matches form-group layout */
 .checkbox-container {

@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use embedded_svc::http::client::Client as HttpClient;
 use embedded_svc::io::Write;
 use esp_idf_svc::http::client::{Configuration as HttpConfiguration, EspHttpConnection};
@@ -12,6 +14,8 @@ use doorbell::web::{FlashMsg, WebServer};
 
 use crate::NavBar;
 
+static SETTINGS_UPDATED: AtomicBool = AtomicBool::new(false);
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 struct PushoverConfig {
     #[serde(default)]
@@ -19,7 +23,7 @@ struct PushoverConfig {
     url: String,
     token: String,
     user: String,
-    ring_message: String,
+    message: String,
 }
 
 impl Default for PushoverConfig {
@@ -28,7 +32,7 @@ impl Default for PushoverConfig {
             url: "https://api.pushover.net/1/messages.json".to_string(),
             token: String::new(),
             user: String::new(),
-            ring_message: "DOORBELL".to_string(),
+            message: "DOORBELL".to_string(),
             enabled: false,
         }
     }
@@ -51,11 +55,11 @@ impl PushoverSender {
             config: NVStore::get("pushover")?.unwrap_or_default(),
         })
     }
-    pub fn send_ring_msg(&mut self) -> anyhow::Result<()> {
-        let ring_message = self.config.ring_message.clone();
-        self.send(&ring_message)
+    pub fn send_ring_msg(&mut self) -> anyhow::Result<Option<u16>> {
+        let message = self.config.message.clone();
+        self.send(&message)
     }
-    pub fn send(&mut self, msg: &str) -> anyhow::Result<()> {
+    pub fn send(&mut self, msg: &str) -> anyhow::Result<Option<u16>> {
         if self.config.enabled {
             // Create client for each request as otherwise can panic
             // if network connection dropped
@@ -90,13 +94,17 @@ impl PushoverSender {
             log::info!("HTTP Request -> POST {}", self.config.url);
 
             match request.submit() {
-                Ok(response) => log::info!("HTTP Response <- {}", response.status()),
-                Err(e) => log::error!("HTTP Error: {e}"),
+                Ok(response) => {
+                    log::info!("HTTP Response <- {}", response.status());
+                    Ok(Some(response.status()))
+                }
+                Err(e) => {
+                    log::error!("HTTP Error: {e}");
+                    Ok(None)
+                }
             }
-
-            Ok(())
         } else {
-            Ok(())
+            Ok(None)
         }
     }
     pub fn add_handlers(
@@ -116,6 +124,7 @@ impl PushoverSender {
 struct PushoverPage<'a> {
     title: &'a str,
     config: PushoverConfig,
+    updated: bool,
     navbar: NavBar<'static>,
 }
 
@@ -130,6 +139,7 @@ pub fn pushover_handler(
         let mqtt_page = PushoverPage {
             title: "Pushover Settings",
             config: pushover_config,
+            updated: SETTINGS_UPDATED.load(Ordering::Relaxed),
             navbar: navbar.clone(),
         };
         let mut response = request.into_response(200, Some("OK"), &[])?;
@@ -150,6 +160,9 @@ pub fn pushover_submit(
             log::info!("MQTT Config: >>{c:?}");
             // Update NVS
             NVStore::set::<PushoverConfig>("pushover", &c)?;
+            // Set static update flag
+            SETTINGS_UPDATED.store(true, Ordering::Relaxed);
+
             let flash = serde_json::to_string(&FlashMsg {
                 level: "success",
                 message: "Successfully updated Pushover settings",
@@ -184,6 +197,9 @@ pub fn pushover_submit(
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PushoverTest {
+    url: Option<String>,
+    token: Option<String>,
+    user: Option<String>,
     message: String,
 }
 
@@ -196,12 +212,23 @@ pub fn pushover_test(
     log::info!("pushover_test: {}", String::from_utf8_lossy(&buf[0..len]));
 
     match serde_json::from_slice::<PushoverTest>(&buf[0..len]) {
-        Ok(t) => {
+        Ok(c) => {
             let mut pushover = PushoverSender::new()?;
-            let flash = match pushover.send(&t.message) {
-                Ok(_) => serde_json::to_string(&FlashMsg {
+            pushover.config.enabled = true;
+            if let Some(t) = c.token {
+                pushover.config.token = t;
+            }
+            if let Some(u) = c.user {
+                pushover.config.user = u;
+            }
+            let flash = match pushover.send(&c.message) {
+                Ok(Some(r)) => serde_json::to_string(&FlashMsg {
                     level: "success",
-                    message: "Pushover Success",
+                    message: &format!("Pushover Status: {r}"),
+                })?,
+                Ok(None) => serde_json::to_string(&FlashMsg {
+                    level: "error",
+                    message: "EspIoError",
                 })?,
                 Err(e) => serde_json::to_string(&FlashMsg {
                     level: "error",
