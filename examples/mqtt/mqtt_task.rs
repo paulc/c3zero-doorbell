@@ -90,6 +90,7 @@ impl MQTTTask {
 struct MqttPage<'a> {
     title: &'a str,
     config: MQTTConfig,
+    updated: bool,
     navbar: NavBar<'static>,
 }
 
@@ -103,6 +104,7 @@ pub fn mqtt_handler(
             title: "MQTT Settings",
             config: mqtt_config,
             navbar: navbar.clone(),
+            updated: false,
         };
         let mut response = request.into_response(200, Some("OK"), &[])?;
         let html = mqtt_page.render()?;
