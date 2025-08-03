@@ -100,6 +100,8 @@ impl MqttManager {
                         EventPayload::Disconnected => {
                             log::info!("MQTT disconnected");
                             has_disconnected = true;
+                            // Make sure we dont block (XXX - possible deadlock?)
+                            std::thread::sleep(Duration::from_millis(1000))
                         }
                         _ => {}
                     }

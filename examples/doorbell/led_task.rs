@@ -30,6 +30,8 @@ pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<LedMessage>) {
                 if !ring {
                     led.set(c).unwrap();
                     led.set(colour::OFF).unwrap();
+                } else {
+                    log::info!(">> led_rx: Flash {c:?} ignored (ring=true)");
                 }
             }
             Err(_e) => {}

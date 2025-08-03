@@ -197,6 +197,7 @@ fn main() -> anyhow::Result<()> {
                 watchdog.feed()?;
             }
             (WifiState::Station(ref ap, _), false) => {
+                log::error!("{count} :: {wifi_state} :: {wifi_connected}");
                 // WiFi disconnected - try to reconnect (every 5 secs)
                 if count.is_multiple_of(5) {
                     log::error!("WIFi Disconnected: Attempting to reconnect");
@@ -221,7 +222,7 @@ fn main() -> anyhow::Result<()> {
 
                 // Flush adc_rx buffer
                 while adc_rx.try_recv().is_ok() {}
-                led_tx.send(led_task::LedMessage::Flash(colour::RED))?;
+                led_tx.send(led_task::LedMessage::Flash(colour::WHITE))?;
                 thread::sleep(Duration::from_millis(1000));
 
                 // We dont update watchdog here - timeout and reset if we dont re-connect
