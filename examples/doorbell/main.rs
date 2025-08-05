@@ -237,7 +237,9 @@ fn main() -> anyhow::Result<()> {
                             led_tx.send(led_task::LedMessage::Ring(true))?;
                             mqtt_task.ring_msg(true)?;
                             mqtt_task.stats_msg()?;
-                            pushover.send_ring_msg()?;
+                            if let Err(e) = pushover.send_ring_msg() {
+                                log::error!("Pushover Error: {e}");
+                            }
                         }
                         adc::RingMessage::RingStop => {
                             log::info!("adc_rx :: {msg:?}");

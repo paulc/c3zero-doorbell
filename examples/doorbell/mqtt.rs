@@ -93,6 +93,16 @@ impl MqttTask {
         }
     }
 
+    pub fn status_msg(&self, topic: &str, msg: &[u8]) -> anyhow::Result<u32> {
+        if self.0.enabled {
+            let topic = format!("{}/{}", self.0.status_topic, topic);
+            log::info!("{topic}: {}", String::from_utf8_lossy(msg));
+            StaticMqttManager::publish(&topic, msg, false)
+        } else {
+            Ok(0)
+        }
+    }
+
     pub fn stats_msg(&self) -> anyhow::Result<u32> {
         if self.0.enabled {
             let stats_topic = format!("{}/ring_stats", self.0.status_topic);

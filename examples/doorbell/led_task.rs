@@ -16,7 +16,7 @@ pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<LedMessage>) {
     loop {
         match led_rx.try_recv() {
             Ok(LedMessage::Ring(v)) => {
-                log::info!(">> led_rx: {v}");
+                log::info!(">> led_rx: Ring::{v}");
                 if v {
                     ring = true;
                     timeout = None; // Reset timeout if necessary
@@ -30,8 +30,6 @@ pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<LedMessage>) {
                 if !ring {
                     led.set(c).unwrap();
                     led.set(colour::OFF).unwrap();
-                } else {
-                    log::info!(">> led_rx: Flash {c:?} ignored (ring=true)");
                 }
             }
             Err(_e) => {}
