@@ -1,4 +1,4 @@
-25632212418511110
+25642735937481656
 Audio_Module
 Reverb_BTDR-1H
 Digital Reverberation Unit, http://www.belton.co.kr/inc/downfile.php?seq=17&file=pdf (footprint from http://www.uk-electronic.de/PDF/BTDR-1.pdf)
@@ -102697,6 +102697,20 @@ SOIC-8_L5.0-W4.0-P1.27-LS6.0-BL
 8
 8
 easyeda2kicad
+SOT-223-3_L6.5-W3.4-P2.30-LS7.0-BR
+
+
+0
+4
+4
+easyeda2kicad
+SW-SMD_L3.9-W3.0-P4.45
+
+
+0
+2
+2
+easyeda2kicad
 SW-SMD_MST22D18G2
 
 
@@ -102717,6 +102731,34 @@ TO-252-2_L6.5-W6.1-P4.58-LS10.0-TL
 0
 3
 3
+easyeda2kicad
+USB-C-SMD_C67381
+
+
+0
+28
+28
+easyeda2kicad
+USB-C-SMD_G-SWITCH_GT-USB-7010ASV
+
+
+0
+18
+16
+easyeda2kicad
+USB-C-SMD_TYPE-C-6PIN-2MD-073
+
+
+0
+18
+14
+easyeda2kicad
+USB-C_SMD-TYPE-C-31-M-12
+
+
+0
+22
+20
 easyeda2kicad
 esp32c3-zero
 
