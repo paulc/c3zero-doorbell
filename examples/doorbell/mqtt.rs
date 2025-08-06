@@ -93,6 +93,7 @@ impl MqttTask {
         }
     }
 
+    #[allow(dead_code)]
     pub fn status_msg(&self, topic: &str, msg: &[u8]) -> anyhow::Result<u32> {
         if self.0.enabled {
             let topic = format!("{}/{}", self.0.status_topic, topic);

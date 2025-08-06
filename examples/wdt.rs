@@ -21,8 +21,6 @@ const AP_PASSWORD: &str = "password";
 
 const NVS_NAMESPACE: &str = "DOORBELL";
 
-const WATCHDOG_TIMEOUT: u64 = 30;
-
 const BUILD_INFO: BuildInfo = BuildInfo {
     build_ts: env!("BUILD_TS"),
     build_branch: env!("BUILD_BRANCH"),
@@ -178,11 +176,11 @@ fn main() -> anyhow::Result<()> {
 
                 // Create task
                 let _ = thread::spawn(|| {
-                    let mut count = 0;
-                    loop {
+                    watchdog::subscribe().unwrap();
+                    for count in 0..10 {
                         log::info!(">> Thread [{count}]");
                         thread::sleep(Duration::from_millis(1000));
-                        count += 1;
+                        watchdog::feed().unwrap();
                     }
                 });
                 // Start watchdog
@@ -190,10 +188,7 @@ fn main() -> anyhow::Result<()> {
             }
             WifiState::Station(ref ap, _) => {
                 if wifi.is_connected()? {
-                    // Force error exit
-                    if count > 10 {
-                        err()?;
-                    }
+                    log::info!("app_main: {count}");
                 } else {
                     // Only try to reconnect every 30 secs
                     if count.is_multiple_of(30) {
@@ -235,6 +230,6 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-fn err() -> anyhow::Result<()> {
+fn _err() -> anyhow::Result<()> {
     Err(anyhow::anyhow!("ERROR"))
 }

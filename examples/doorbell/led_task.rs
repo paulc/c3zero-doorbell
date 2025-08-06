@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use doorbell::ws2812::{colour, Rgb, Ws2812RmtSingle};
 
+use crate::watchdog;
+
 pub enum LedMessage {
     Ring(bool),
     Flash(Rgb),
@@ -13,6 +15,9 @@ pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<LedMessage>) {
     let mut ring = false;
     let mut timeout: Option<u8> = None;
     let mut on = false;
+
+    watchdog::subscribe().unwrap();
+
     loop {
         match led_rx.try_recv() {
             Ok(LedMessage::Ring(v)) => {
@@ -47,6 +52,8 @@ pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<LedMessage>) {
             Some(n) => Some(n - 1),
             None => None,
         };
+
+        watchdog::feed().unwrap();
         thread::sleep(Duration::from_millis(200));
     }
 }

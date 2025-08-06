@@ -1,7 +1,6 @@
 #![feature(lock_value_accessors)]
 
 use esp_idf_hal::gpio::OutputPin;
-use esp_idf_hal::task::watchdog::{TWDTConfig, TWDTDriver};
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::hal::prelude::*;
 use esp_idf_svc::http::Method;
@@ -23,6 +22,7 @@ mod led_task;
 mod mqtt;
 mod mqtt_debug;
 mod pushover;
+mod watchdog;
 
 pub use mqtt_debug::mqtt_debug;
 
@@ -88,12 +88,7 @@ fn main() -> anyhow::Result<()> {
     let nvs_default_partition = EspDefaultNvsPartition::take()?;
 
     // Hardware Watchdog
-    let twdt_config = TWDTConfig {
-        duration: Duration::from_secs(WATCHDOG_TIMEOUT),
-        panic_on_trigger: true,
-        subscribed_idle_tasks: enumset::enum_set!(esp_idf_hal::cpu::Core::Core0),
-    };
-    let mut twdt_driver = TWDTDriver::new(peripherals.twdt, &twdt_config)?;
+    watchdog::init(peripherals.twdt, Duration::from_secs(WATCHDOG_TIMEOUT))?;
 
     // NVStore
     let nvs = NVStore::init(nvs_default_partition.clone(), NVS_NAMESPACE)?;
@@ -156,7 +151,7 @@ fn main() -> anyhow::Result<()> {
     pushover.add_handlers(&mut web, NAVBAR)?;
 
     // Start watchdog after initialisation
-    let mut watchdog = twdt_driver.watch_current_task()?;
+    watchdog::subscribe()?;
     let mut count = 0_usize;
 
     loop {
@@ -194,7 +189,7 @@ fn main() -> anyhow::Result<()> {
                 WIFI_STATE.replace(wifi_state)?;
 
                 // Update watchdog
-                watchdog.feed()?;
+                watchdog::feed()?;
             }
             (WifiState::Station(ref ap, _), false) => {
                 log::error!("{count} :: {wifi_state} :: {wifi_connected}");
@@ -233,18 +228,27 @@ fn main() -> anyhow::Result<()> {
                     Ok(msg) => match msg {
                         adc::RingMessage::RingStart(ref _s) => {
                             log::info!("adc_rx :: {msg:?}");
-
-                            led_tx.send(led_task::LedMessage::Ring(true))?;
-                            mqtt_task.ring_msg(true)?;
-                            mqtt_task.stats_msg()?;
+                            if let Err(e) = led_tx.send(led_task::LedMessage::Ring(true)) {
+                                log::error!("LED Error: {e}");
+                            }
+                            if let Err(e) = mqtt_task.ring_msg(true) {
+                                log::error!("MQTT Error: {e}");
+                            }
+                            if let Err(e) = mqtt_task.stats_msg() {
+                                log::error!("MQTT Error: {e}");
+                            }
                             if let Err(e) = pushover.send_ring_msg() {
                                 log::error!("Pushover Error: {e}");
                             }
                         }
                         adc::RingMessage::RingStop => {
                             log::info!("adc_rx :: {msg:?}");
-                            led_tx.send(led_task::LedMessage::Ring(false))?;
-                            mqtt_task.ring_msg(false)?;
+                            if let Err(e) = led_tx.send(led_task::LedMessage::Ring(false)) {
+                                log::error!("LED Error: {e}");
+                            }
+                            if let Err(e) = mqtt_task.ring_msg(false) {
+                                log::error!("MQTT Error: {e}");
+                            }
                         }
                     },
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -253,7 +257,7 @@ fn main() -> anyhow::Result<()> {
                 led_tx.send(led_task::LedMessage::Flash(colour::BLUE))?;
 
                 // Update watchdog
-                watchdog.feed()?;
+                watchdog::feed()?;
             }
             (WifiState::AP(_, _), _) => {
                 // AP Mode
@@ -263,7 +267,7 @@ fn main() -> anyhow::Result<()> {
                 led_tx.send(led_task::LedMessage::Flash(colour::GREEN))?;
 
                 // Update watchdog
-                watchdog.feed()?;
+                watchdog::feed()?;
             }
         }
 
