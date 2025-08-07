@@ -11,9 +11,9 @@ use std::sync::{Mutex, OnceLock};
 const ERROR_LOG_LENGTH: usize = 20;
 static ERROR_LOG: OnceLock<Mutex<fifo::FixedFifo<String>>> = OnceLock::new();
 
-pub fn errorlog_init() -> anyhow::Result<()> {
+pub fn errorlog_init(max_size: usize) -> anyhow::Result<()> {
     ERROR_LOG
-        .set(Mutex::new(fifo::FixedFifo::new(ERROR_LOG_LENGTH)))
+        .set(Mutex::new(fifo::FixedFifo::new(max_size)))
         .map_err(|_| anyhow::anyhow!("ERROR_LOG invalid state"))
 }
 

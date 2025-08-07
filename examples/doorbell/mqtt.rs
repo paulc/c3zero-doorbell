@@ -38,8 +38,8 @@ impl MqttTask {
             log::info!("Starting MQTT Connection Thread");
             let _connection_t = thread::spawn(move || loop {
                 match mqtt_rx.recv_timeout(Duration::from_secs(2)) {
-                    Ok(MqttMessage::Reconnected) => {
-                        log::info!("MQTT re-connected: resubscribing");
+                    Ok(MqttMessage::Connected) => {
+                        log::info!("MQTT Connected: Subscribing");
                         // Re-subscribe channels here
                     }
                     Ok(MqttMessage::Message(topic, data)) => {

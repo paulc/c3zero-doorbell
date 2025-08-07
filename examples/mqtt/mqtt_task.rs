@@ -50,10 +50,10 @@ impl MQTTTask {
                             f_ring(data.as_str());
                         }
                     }
-                    Ok(MqttMessage::Reconnected) => {
-                        log::info!("MQTT re-connected: resubscribing");
+                    Ok(MqttMessage::Connected) => {
+                        log::info!("MQTT Connected: Subscribing");
                         StaticMqttManager::subscribe(&ring_topic)
-                            .expect("Failed to resubscribe to MQTT_RING_TOPIC");
+                            .expect("Failed to subscribe to MQTT_RING_TOPIC");
                     }
                     _ => {}
                 }

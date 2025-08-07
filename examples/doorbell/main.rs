@@ -18,13 +18,11 @@ use doorbell::wifi::{APConfig, APStore, WifiManager, WifiState};
 use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 
 mod adc;
+mod errlog;
 mod led_task;
 mod mqtt;
-mod mqtt_debug;
 mod pushover;
 mod watchdog;
-
-pub use mqtt_debug::mqtt_debug;
 
 const AP_SSID: &str = "ESP32C3-AP";
 const AP_PASSWORD: &str = "password";

@@ -9,7 +9,7 @@ const MQTT_RETRY_COUNT: u32 = 5;
 
 pub enum MqttMessage {
     Message(String, Vec<u8>),
-    Reconnected,
+    Connected,
 }
 
 static MQTT_MANAGER: Mutex<Option<MqttManager>> = Mutex::new(None);
@@ -76,8 +76,6 @@ impl MqttManager {
         let _conn_handle = std::thread::Builder::new()
             .stack_size(8192)
             .spawn(move || {
-                // TODO Remove has_disconnected test
-                let mut has_disconnected = false;
                 log::info!("MQTT Listening for messages");
                 while let Ok(event) = connection.next() {
                     log::info!("[Queue] Event: {}", event.payload());
@@ -91,17 +89,11 @@ impl MqttManager {
                             .send(MqttMessage::Message(t.to_owned(), data.to_vec()))
                             .unwrap_or(()),
                         EventPayload::Connected(_) => {
-                            if has_disconnected {
-                                log::info!("MQTT Reconnected");
-                                has_disconnected = false;
-                                tx.send(MqttMessage::Reconnected).unwrap_or(())
-                            }
+                            log::info!("MQTT Connected");
+                            tx.send(MqttMessage::Connected).unwrap_or(())
                         }
                         EventPayload::Disconnected => {
                             log::info!("MQTT disconnected");
-                            has_disconnected = true;
-                            // Make sure we dont block (XXX - possible deadlock?)
-                            std::thread::sleep(Duration::from_millis(1000))
                         }
                         _ => {}
                     }
