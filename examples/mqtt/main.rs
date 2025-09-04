@@ -102,6 +102,17 @@ fn main() -> anyhow::Result<()> {
     let (led_tx, led_rx) = mpsc::channel::<led_task::LedMessage>();
     let _led_task = thread::spawn(move || led_task::led_task(led, led_rx));
 
+    // PWM task
+    let (_pwm_tx, pwm_rx) = mpsc::channel::<pwm_task::PwmMessage>();
+    let _led_task = thread::spawn(move || {
+        pwm_task::pwm_task(
+            peripherals.pins.gpio12.downgrade_output(),
+            peripherals.ledc.timer0,
+            peripherals.ledc.channel0,
+            pwm_rx,
+        )
+    });
+
     // Start web server
     let mut web = WebServer::new(NAVBAR)?;
 
@@ -216,5 +227,45 @@ fn main() -> anyhow::Result<()> {
 
         // Sleep
         thread::sleep(Duration::from_millis(1000));
+    }
+}
+
+mod pwm_task {
+    use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver};
+    use esp_idf_svc::hal::gpio::AnyOutputPin;
+
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    type LedcTimer = esp_idf_svc::hal::ledc::TIMER0;
+    type LedcChannel = esp_idf_svc::hal::ledc::CHANNEL0;
+
+    pub enum PwmMessage {
+        Enable,
+        Disable,
+        SetDuty(u32),
+    }
+
+    pub fn pwm_task(
+        pwm_pin: AnyOutputPin,
+        ledc_timer: LedcTimer,
+        ledc_channel: LedcChannel,
+        pwm_rx: mpsc::Receiver<PwmMessage>,
+    ) -> anyhow::Result<()> {
+        let timer_driver = LedcTimerDriver::new(ledc_timer, &TimerConfig::default())?;
+        let mut driver = LedcDriver::new(ledc_channel, timer_driver, pwm_pin)
+            .map_err(|e| anyhow::anyhow!("LedcDriver Error: {e:?}"))?;
+        let max_duty = driver.get_max_duty();
+        log::info!("LEDC Max Duty: {max_duty}");
+        driver.enable()?;
+        driver.set_duty(0)?;
+        loop {
+            match pwm_rx.recv_timeout(Duration::from_millis(200)) {
+                Ok(PwmMessage::Enable) => driver.enable()?,
+                Ok(PwmMessage::Disable) => driver.disable()?,
+                Ok(PwmMessage::SetDuty(d)) => driver.set_duty(d)?,
+                Err(e) => log::error!("pwm_rx error: {e}"),
+            }
+        }
     }
 }
