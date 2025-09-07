@@ -21,7 +21,7 @@ pub fn led_task(mut led: Ws2812RmtSingle, led_rx: mpsc::Receiver<LedMessage>) {
                     timeout = None; // Reset timeout if necessary
                 } else {
                     // Keep flashing for timeout cycles
-                    timeout = Some(5);
+                    timeout = Some(10);
                 }
             }
             Ok(LedMessage::Flash(c)) => {

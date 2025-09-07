@@ -1,6 +1,5 @@
 #![feature(lock_value_accessors)]
 
-pub mod alert;
 pub mod button;
 pub mod mqtt;
 pub mod nvs;

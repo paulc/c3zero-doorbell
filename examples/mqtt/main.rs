@@ -103,8 +103,8 @@ fn main() -> anyhow::Result<()> {
     let _led_task = thread::spawn(move || led_task::led_task(led, led_rx));
 
     // PWM task
-    let (_pwm_tx, pwm_rx) = mpsc::channel::<pwm_task::PwmMessage>();
-    let _led_task = thread::spawn(move || {
+    let (pwm_tx, pwm_rx) = mpsc::channel::<pwm_task::PwmMessage>();
+    let _pwm_task = thread::spawn(move || {
         pwm_task::pwm_task(
             peripherals.pins.gpio12.downgrade_output(),
             peripherals.ledc.timer0,
@@ -112,6 +112,8 @@ fn main() -> anyhow::Result<()> {
             pwm_rx,
         )
     });
+    pwm_tx.send(pwm_task::PwmMessage::SetDuty(0.5))?;
+    pwm_tx.send(pwm_task::PwmMessage::Disable)?;
 
     // Start web server
     let mut web = WebServer::new(NAVBAR)?;
@@ -189,11 +191,18 @@ fn main() -> anyhow::Result<()> {
                 // WiFi connected - start mqtt_task
                 if mqtt.is_enabled() {
                     let led_tx = led_tx.clone();
+                    let pwm_tx = pwm_tx.clone();
 
                     match mqtt.run(
                         move |s: &str| match s {
-                            "ON" => led_tx.send(led_task::LedMessage::Ring(true)).unwrap_or(()),
-                            "OFF" => led_tx.send(led_task::LedMessage::Ring(false)).unwrap_or(()),
+                            "ON" => {
+                                led_tx.send(led_task::LedMessage::Ring(true)).unwrap_or(());
+                                pwm_tx.send(pwm_task::PwmMessage::Enable).unwrap_or(())
+                            }
+                            "OFF" => {
+                                led_tx.send(led_task::LedMessage::Ring(false)).unwrap_or(());
+                                pwm_tx.send(pwm_task::PwmMessage::Disable).unwrap_or(())
+                            }
                             _ => {}
                         },
                         &wifi_state.to_string(),
@@ -243,7 +252,7 @@ mod pwm_task {
     pub enum PwmMessage {
         Enable,
         Disable,
-        SetDuty(u32),
+        SetDuty(f32),
     }
 
     pub fn pwm_task(
@@ -257,13 +266,14 @@ mod pwm_task {
             .map_err(|e| anyhow::anyhow!("LedcDriver Error: {e:?}"))?;
         let max_duty = driver.get_max_duty();
         log::info!("LEDC Max Duty: {max_duty}");
-        driver.enable()?;
+        driver.disable()?;
         driver.set_duty(0)?;
         loop {
             match pwm_rx.recv_timeout(Duration::from_millis(200)) {
                 Ok(PwmMessage::Enable) => driver.enable()?,
                 Ok(PwmMessage::Disable) => driver.disable()?,
-                Ok(PwmMessage::SetDuty(d)) => driver.set_duty(d)?,
+                Ok(PwmMessage::SetDuty(d)) => driver.set_duty((d * max_duty as f32) as u32)?,
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(e) => log::error!("pwm_rx error: {e}"),
             }
         }
