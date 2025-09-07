@@ -8,7 +8,6 @@ use esp_idf_svc::http::Method;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::EspWifi;
 
-use std::env;
 use std::thread;
 use std::time::Duration;
 
@@ -17,14 +16,12 @@ use doorbell::web::{BuildInfo, HomePage, NavBar, NavLink, WebServer};
 use doorbell::wifi::{APConfig, APStore, WifiManager};
 use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 
-mod ota;
-
 const AP_SSID: &str = "ESP32C3-AP";
 const AP_PASSWORD: &str = "password";
 
 const NVS_NAMESPACE: &str = "DOORBELL";
 
-const WATCHDOG_TIMEOUT: u64 = 60;
+const WATCHDOG_TIMEOUT: u64 = 5;
 const RESET_THRESHOLD: u64 = 5;
 
 const BUILD_INFO: BuildInfo = BuildInfo {
@@ -36,15 +33,15 @@ const BUILD_INFO: BuildInfo = BuildInfo {
 
 // Static NavBar
 pub const NAVBAR: NavBar = NavBar {
-    title: "OTA Test",
+    title: "MQTT Alarm",
     links: &[
         NavLink {
             url: "/wifi",
             label: "Wifi Configuration",
         },
         NavLink {
-            url: "/ota_page",
-            label: "OTA Update",
+            url: "/sse_page",
+            label: "SSE Test",
         },
         NavLink {
             url: "/reset_page",
@@ -106,7 +103,6 @@ fn main() -> anyhow::Result<()> {
     // Add module handlers
     nvs.add_handlers(&mut web, NAVBAR)?;
     wifi.add_handlers(&mut web, NAVBAR)?;
-    ota::add_handlers(&mut web, NAVBAR)?;
 
     // Home Page
     let status = wifi_state
@@ -116,6 +112,10 @@ fn main() -> anyhow::Result<()> {
         .collect::<Vec<_>>();
     let home_page = HomePage::new(NAVBAR.title, status, NAVBAR);
     web.add_handler("/", Method::Get, home_page.make_handler())?;
+
+    // SSE Example
+    web.add_handler("/sse", Method::Get, sse::make_sse_handler())?;
+    web.add_handler("/sse_page", Method::Get, sse::make_sse_page(NAVBAR))?;
 
     // Start watchdog after spawning tasks
     let mut watchdog = twdt_driver.watch_current_task()?;
@@ -142,5 +142,59 @@ fn main() -> anyhow::Result<()> {
 
         // Update watchdog
         watchdog.feed()?
+    }
+}
+
+mod sse {
+    use esp_idf_svc::http::server::{EspHttpConnection, Request};
+
+    use askama::Template;
+
+    use doorbell::web::NavBar;
+
+    #[derive(Template)]
+    #[template(path = "sse_test.html")]
+    struct SSEPage {
+        navbar: NavBar<'static>,
+    }
+
+    pub fn make_sse_page(
+        navbar: NavBar<'static>,
+    ) -> impl for<'r> Fn(Request<&mut EspHttpConnection<'r>>) -> anyhow::Result<()> + Send + 'static
+    {
+        move |request| {
+            let sse_page = SSEPage {
+                navbar: navbar.clone(),
+            };
+            let mut response = request.into_response(200, Some("OK"), &[])?;
+            let html = sse_page.render()?;
+            response.write(html.as_bytes())?;
+
+            Ok::<(), anyhow::Error>(())
+        }
+    }
+
+    pub fn make_sse_handler(
+    ) -> impl for<'r> Fn(Request<&mut EspHttpConnection<'r>>) -> anyhow::Result<()> + Send + 'static
+    {
+        move |request| {
+            let mut response = request.into_response(
+                200,
+                Some("OK"),
+                &[
+                    ("Content-Type", "text/event-stream"),
+                    ("Connection", "keep-alive"),
+                    ("Access-Control-Allow-Origin", "*"),
+                ],
+            )?;
+            for counter in 0..100 {
+                log::info!(">> Event: count={counter}");
+                let msg = format!("event: data\r\ndata: {{ \"counter\": {counter} }}\r\n\r\n");
+                response.write(msg.as_bytes())?;
+                response.flush()?;
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Ok::<(), anyhow::Error>(())
+        }
     }
 }
