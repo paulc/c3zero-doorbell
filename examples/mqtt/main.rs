@@ -3,6 +3,7 @@
 use esp_idf_hal::gpio::OutputPin;
 use esp_idf_hal::task::watchdog::{TWDTConfig, TWDTDriver};
 use esp_idf_svc::eventloop::EspSystemEventLoop;
+use esp_idf_svc::hal::ledc;
 use esp_idf_svc::hal::prelude::*;
 use esp_idf_svc::http::Method;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
@@ -20,6 +21,7 @@ use doorbell::ws2812::{colour, RgbLayout, Ws2812RmtSingle};
 
 mod led_task;
 mod mqtt_task;
+mod pwm_task;
 
 const AP_SSID: &str = "ESP32C3-AP";
 const AP_PASSWORD: &str = "password";
@@ -103,17 +105,21 @@ fn main() -> anyhow::Result<()> {
     let _led_task = thread::spawn(move || led_task::led_task(led, led_rx));
 
     // PWM task
+    let timer_config = ledc::config::TimerConfig::default()
+        .frequency(50.into())
+        .resolution(ledc::Resolution::Bits14);
     let (pwm_tx, pwm_rx) = mpsc::channel::<pwm_task::PwmMessage>();
     let _pwm_task = thread::spawn(move || {
         pwm_task::pwm_task(
-            peripherals.pins.gpio12.downgrade_output(),
+            peripherals.pins.gpio6.downgrade_output(),
             peripherals.ledc.timer0,
             peripherals.ledc.channel0,
+            timer_config,
             pwm_rx,
         )
     });
     pwm_tx.send(pwm_task::PwmMessage::SetDuty(0.5))?;
-    pwm_tx.send(pwm_task::PwmMessage::Disable)?;
+    pwm_tx.send(pwm_task::PwmMessage::Enable)?;
 
     // Start web server
     let mut web = WebServer::new(NAVBAR)?;
@@ -189,6 +195,7 @@ fn main() -> anyhow::Result<()> {
             }
             (WifiState::Station(_, _), true, false) => {
                 // WiFi connected - start mqtt_task
+                /*
                 if mqtt.is_enabled() {
                     let led_tx = led_tx.clone();
                     let pwm_tx = pwm_tx.clone();
@@ -214,6 +221,7 @@ fn main() -> anyhow::Result<()> {
                         Err(e) => log::info!("mqtt_task error [{e}]"),
                     }
                 }
+                */
             }
             (WifiState::Station(_, _), true, true) => {
                 // WiFi connected / MQTT running - normal operation
@@ -228,6 +236,11 @@ fn main() -> anyhow::Result<()> {
         // Update state
         prev_state = current_state;
 
+        // PWM
+        let dc = (count % 50) as f32 / 50.0;
+        pwm_tx.send(pwm_task::PwmMessage::SetDuty(dc))?;
+        log::info!("PWM Duty Cycle: {dc:.2}");
+
         // Update watchdog
         watchdog.feed()?;
 
@@ -236,46 +249,5 @@ fn main() -> anyhow::Result<()> {
 
         // Sleep
         thread::sleep(Duration::from_millis(1000));
-    }
-}
-
-mod pwm_task {
-    use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver};
-    use esp_idf_svc::hal::gpio::AnyOutputPin;
-
-    use std::sync::mpsc;
-    use std::time::Duration;
-
-    type LedcTimer = esp_idf_svc::hal::ledc::TIMER0;
-    type LedcChannel = esp_idf_svc::hal::ledc::CHANNEL0;
-
-    pub enum PwmMessage {
-        Enable,
-        Disable,
-        SetDuty(f32),
-    }
-
-    pub fn pwm_task(
-        pwm_pin: AnyOutputPin,
-        ledc_timer: LedcTimer,
-        ledc_channel: LedcChannel,
-        pwm_rx: mpsc::Receiver<PwmMessage>,
-    ) -> anyhow::Result<()> {
-        let timer_driver = LedcTimerDriver::new(ledc_timer, &TimerConfig::default())?;
-        let mut driver = LedcDriver::new(ledc_channel, timer_driver, pwm_pin)
-            .map_err(|e| anyhow::anyhow!("LedcDriver Error: {e:?}"))?;
-        let max_duty = driver.get_max_duty();
-        log::info!("LEDC Max Duty: {max_duty}");
-        driver.disable()?;
-        driver.set_duty(0)?;
-        loop {
-            match pwm_rx.recv_timeout(Duration::from_millis(200)) {
-                Ok(PwmMessage::Enable) => driver.enable()?,
-                Ok(PwmMessage::Disable) => driver.disable()?,
-                Ok(PwmMessage::SetDuty(d)) => driver.set_duty((d * max_duty as f32) as u32)?,
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(e) => log::error!("pwm_rx error: {e}"),
-            }
-        }
     }
 }
