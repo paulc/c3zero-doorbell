@@ -106,7 +106,7 @@ fn main() -> anyhow::Result<()> {
 
     // PWM task
     let timer_config = ledc::config::TimerConfig::default()
-        .frequency(50.into())
+        .frequency(440.into())
         .resolution(ledc::Resolution::Bits14);
     let (pwm_tx, pwm_rx) = mpsc::channel::<pwm_task::PwmMessage>();
     let _pwm_task = thread::spawn(move || {
@@ -146,6 +146,7 @@ fn main() -> anyhow::Result<()> {
     let mut mqtt_started = false;
 
     let mut prev_state = (wifi_state.clone(), false, false);
+    let mut freq = 100_u32;
 
     loop {
         let current_state = (wifi_state.clone(), wifi.is_connected()?, mqtt_started);
@@ -237,9 +238,22 @@ fn main() -> anyhow::Result<()> {
         prev_state = current_state;
 
         // PWM
-        let dc = (count % 50) as f32 / 50.0;
-        pwm_tx.send(pwm_task::PwmMessage::SetDuty(dc))?;
-        log::info!("PWM Duty Cycle: {dc:.2}");
+        match count % 2 {
+            0 => {
+                // PWM On
+                log::info!("PWM On");
+                pwm_tx.send(pwm_task::PwmMessage::Enable)?
+            }
+            1 => {
+                // PWM Off
+                log::info!("PWM Off");
+                pwm_tx.send(pwm_task::PwmMessage::Disable)?;
+                freq = ((freq + 100) % 2000).max(100);
+                log::info!("PWM Freq: {freq}");
+                pwm_tx.send(pwm_task::PwmMessage::SetFrequency(freq.into()))?;
+            }
+            _ => {}
+        }
 
         // Update watchdog
         watchdog.feed()?;
